@@ -19,6 +19,11 @@ from brailix.backend.math.context import MathBrailleContext
 from brailix.backend.math.utils import _unknown_cell
 from brailix.ir.braille import BrailleCell
 
+# Cap on how much of an unsupported element's serialized subtree is copied
+# into the warning surface. A bare <mtable> can serialize to many kilobytes;
+# the surface only needs to identify *what* was dropped, not reproduce it.
+_SURFACE_MAX = 200
+
 
 def _emit_merror(
     cells: list[BrailleCell], mctx: MathBrailleContext, elem: ET.Element
@@ -30,7 +35,7 @@ def _emit_merror(
         surface = "".join(t or "" for t in elem.itertext()).strip()
     else:
         surface = (elem.text or "").strip()
-    mctx.backend.warnings.warn(
+    mctx.backend.warnings.error(
         code="MATH_ERROR",
         message=f"<merror>: {reason}",
         surface=surface,
@@ -44,8 +49,14 @@ def _emit_merror(
 def _emit_unsupported(
     cells: list[BrailleCell], mctx: MathBrailleContext, elem: ET.Element
 ) -> None:
-    surface = ET.tostring(elem, encoding="unicode")
-    mctx.backend.warnings.warn(
+    serialized = ET.tostring(elem, encoding="unicode")
+    if len(serialized) > _SURFACE_MAX:
+        # Truncate large subtrees (e.g. a whole <mtable>) so the warning
+        # surface stays bounded; the tag is already in the message.
+        surface = serialized[:_SURFACE_MAX] + "…"
+    else:
+        surface = serialized
+    mctx.backend.warnings.error(
         code="MATH_UNSUPPORTED_ELEMENT",
         message=f"unsupported math element <{elem.tag}>",
         surface=surface,

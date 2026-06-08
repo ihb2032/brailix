@@ -705,7 +705,7 @@ class Pipeline:
             try:
                 tree = _frontend_parse_music_tree(text, music_ctx)
             except Exception as exc:  # noqa: BLE001 — adapter failures are wide
-                ctx.warnings.warn(
+                ctx.warnings.error(
                     code="MUSIC_BLOCK_PARSE_FAILED",
                     message=f"music block parse failed: {exc!r}",
                     surface=text,
@@ -776,7 +776,7 @@ class Pipeline:
             try:
                 tree = parse_math_tree(text, math_ctx)
             except Exception as exc:  # noqa: BLE001 — adapter errors are wide
-                ctx.warnings.warn(
+                ctx.warnings.error(
                     code="MATH_BLOCK_PARSE_FAILED",
                     message=f"math block parse failed: {exc!r}",
                     surface=text,
@@ -826,8 +826,17 @@ class Pipeline:
             "normalizer": _resolve_language_adapter(
                 normalizer_registry, self.normalizer, DEFAULT_NORMALIZER, lang
             ),
-            "zh_analyzer": self.analyzer,
-            "ja_analyzer": self.analyzer,
+            # Analyzer is selected per language: each LanguageFrontend reads
+            # ``ctx.options["{lang}_analyzer"]`` (zh reads ``zh_analyzer``, ja
+            # reads ``ja_analyzer``). Key off the active profile's language
+            # primary subtag — the same ``lang`` the segmenter / normalizer
+            # use above — instead of hard-coding one option key per language,
+            # so a new prose language is registration, not a change here.
+            # ``_process_segment`` routes a run to the frontend matching this
+            # same ``lang``, so only the current language's analyzer key is
+            # ever read; a missing key falls back to the frontend's default
+            # (``auto``).
+            f"{lang}_analyzer": self.analyzer,
             "pinyin_resolver": self.resolver,
             "user_pinyin_dict": self.user_pinyin_dict,
         }

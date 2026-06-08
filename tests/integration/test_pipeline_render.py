@@ -264,6 +264,106 @@ class TestUnhandledSegmentType:
             pipe.translate_text("重庆")
 
 
+class TestRunModeEndToEnd:
+    """End-to-end mode contrast through the Pipeline.
+
+    ``tests/core/test_errors.py`` covers the WarningCollector mechanism in
+    isolation; this exercises all three modes through a full
+    ``translate_text`` run on the *same* malformed input so the contrast is
+    observable at the public API.
+
+    Input: ``$\\frac{1}{$`` — an unbalanced ``\\frac`` that latex2mathml
+    cannot parse. The math frontend surfaces a ``MATH_ERROR`` warning and
+    falls back to a placeholder cell.
+
+    Observed real behaviour (verified by running each mode, not assumed):
+
+    * strict  → the MATH_ERROR is promoted to a ``StrictModeError`` and the
+      run aborts (no output at all).
+    * normal  → the warning is recorded **at ERROR level** and the run still
+      completes, rendering a fallback (blank) cell.
+    * lenient → same recovered output, but the ERROR-level warning is
+      *downgraded to WARN* (see ``WarningCollector`` in core/errors.py).
+
+    A failed parse (``MATH_ERROR``) is an *unrecoverable structure* — the
+    formula is lost, only a placeholder cell stands in — so it is emitted at
+    ``WarningLevel.ERROR``. That makes the three modes genuinely distinct on
+    the same input: strict aborts, normal flags it as an error (a front-end
+    can surface it red), and lenient (experimental "just give me output")
+    downgrades it to a warning so nothing reads as a hard failure. The
+    rendered braille is identical for normal/lenient — recovery is the same;
+    only the diagnostic *level* differs.
+    """
+
+    BAD_MATH = "$\\frac{1}{$"
+
+    def test_strict_aborts_on_malformed_math(self):
+        from brailix import Pipeline
+        from brailix.core.errors import StrictModeError
+
+        pipe = Pipeline(mode="strict", analyzer="null", resolver="null")
+        with pytest.raises(StrictModeError) as ei:
+            pipe.translate_text(self.BAD_MATH)
+        assert ei.value.warning.code == "MATH_ERROR"
+
+    def test_normal_keeps_error_level_but_still_renders(self):
+        from brailix import Pipeline
+        from brailix.core.errors import WarningLevel
+
+        pipe = Pipeline(mode="normal", analyzer="null", resolver="null")
+        result = pipe.translate_text(self.BAD_MATH)
+        math_errs = [w for w in result.warnings if w.code == "MATH_ERROR"]
+        assert math_errs, "expected a MATH_ERROR warning"
+        # NORMAL keeps the unrecoverable-structure diagnostic at ERROR level.
+        assert all(w.level is WarningLevel.ERROR for w in math_errs)
+        # Run completed and produced a (fallback) rendering rather than
+        # aborting — the placeholder cell is U+2800 (blank braille).
+        out = result.render()
+        assert isinstance(out, str)
+        assert out == "⠀"
+
+    def test_lenient_downgrades_error_to_warn(self):
+        from brailix import Pipeline
+        from brailix.core.errors import WarningLevel
+
+        pipe = Pipeline(mode="lenient", analyzer="null", resolver="null")
+        result = pipe.translate_text(self.BAD_MATH)
+        math_errs = [w for w in result.warnings if w.code == "MATH_ERROR"]
+        assert math_errs, "expected a MATH_ERROR warning"
+        # LENIENT downgrades the ERROR to WARN — nothing reads as hard-failed.
+        assert all(w.level is WarningLevel.WARN for w in math_errs)
+        out = result.render()
+        assert isinstance(out, str)
+        assert out == "⠀"
+
+    def test_modes_differ_on_same_input(self):
+        """Same input, three distinct outcomes: strict aborts; normal vs
+        lenient render the same braille but disagree on the warning level."""
+        from brailix import Pipeline
+        from brailix.core.errors import StrictModeError, WarningLevel
+
+        results = {}
+        for mode in ("normal", "lenient"):
+            pipe = Pipeline(mode=mode, analyzer="null", resolver="null")
+            results[mode] = pipe.translate_text(self.BAD_MATH)
+        # Recovery is identical...
+        assert results["normal"].render() == results["lenient"].render()
+
+        def level(result):
+            return next(
+                w.level for w in result.warnings if w.code == "MATH_ERROR"
+            )
+
+        # ...but the diagnostic level distinguishes them.
+        assert level(results["normal"]) is WarningLevel.ERROR
+        assert level(results["lenient"]) is WarningLevel.WARN
+
+        with pytest.raises(StrictModeError):
+            Pipeline(mode="strict", analyzer="null", resolver="null").translate_text(
+                self.BAD_MATH
+            )
+
+
 class TestStandaloneResult:
     def test_render_without_a_pipeline(self):
         # A caller can hand-build a TranslationResult and still render

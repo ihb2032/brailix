@@ -23,13 +23,19 @@
         {"src": "$1/x$", "expected": "⠼⠁⠳⠰⠭", "note": "typed slash with letter denom"},
         {"src": "$\\frac{\\frac{1}{2}}{3}$", "expected": "⠼⠁⠆⠳⠼⠉", "note": "simple: nested fraction over digit (single structure / single structure)"},
         {"src": "$\\frac{3}{\\frac{1}{2}}$", "expected": "⠼⠉⠳⠼⠁⠆", "note": "simple: digit over nested fraction"},
-        {"src": "$\\frac{\\frac{a}{b}}{\\frac{c}{d}}$", "expected": "⠰⠁⠳⠰⠃⠳⠰⠉⠳⠰⠙", "note": "simple: nested fraction / nested fraction"},
+        {"src": "$\\frac{\\frac{a}{b}}{\\frac{c}{d}}$", "expected": "⠆⠰⠁⠳⠰⠃⠀⠳⠰⠉⠳⠰⠙⠰", "note": "compound: both operands are nested SIMPLE fractions (no fence), so the outer wraps in fraction.open ⠆ … fraction.close ⠰ — numerator a/b then blank+bar then denominator c/d"},
         {"src": "$\\frac{\\sqrt{3}}{2}$", "expected": "⠩⠱⠼⠉⠹⠳⠼⠃", "note": "simple: sqrt over digit (sqrt.close self-fences numerator)"},
         {"src": "$\\frac{2}{\\sqrt{3}}$", "expected": "⠼⠃⠳⠩⠱⠼⠉⠹", "note": "simple: digit over sqrt"},
         {"src": "$\\frac{\\sqrt{3}}{\\sqrt{2}}$", "expected": "⠩⠱⠼⠉⠹⠳⠩⠱⠼⠃⠹", "note": "simple: sqrt over sqrt"},
         {"src": "$\\frac{1}{\\sqrt{2}}$", "expected": "⠼⠁⠳⠩⠱⠼⠃⠹", "note": "simple: 1 over sqrt(2)"},
         {"src": "$\\frac{x^2}{2}$", "expected": "⠰⠭⠌⠆⠳⠼⠃", "note": "simple: msup over digit (atomic-lower-digit closes script)"},
-        {"src": "$\\frac{2}{x^2}$", "expected": "⠼⠃⠳⠰⠭⠌⠆", "note": "simple: digit over msup"}
+        {"src": "$\\frac{2}{x^2}$", "expected": "⠼⠃⠳⠰⠭⠌⠆", "note": "simple: digit over msup"},
+        {"src": "$\\frac{\\frac{a}{b}}{c}$", "expected": "⠆⠰⠁⠳⠰⠃⠀⠳⠰⠉⠰", "note": "deep nest (ARCHITECTURE.md §10): nested simple-fraction NUMERATOR over letter — the inner a/b has no fence, so the outer takes compound form ⠆…⠰: open, a/b, blank, bar, c, close"},
+        {"src": "$\\frac{a}{\\frac{b}{c}}$", "expected": "⠆⠰⠁⠀⠳⠰⠃⠳⠰⠉⠰", "note": "deep nest: nested simple-fraction DENOMINATOR — compound form ⠆…⠰: open, a, blank, bar, b/c, close. Distinct from the numerator-nested case above (blank sits after a, not after a/b), so (a/b)/c and a/(b/c) are no longer ambiguous"},
+        {"src": "$\\frac{\\frac{1}{2}}{\\frac{3}{4}}$", "expected": "⠼⠁⠆⠳⠼⠉⠲", "note": "deep nest: Antoine fraction over Antoine fraction → (1/2)/(3/4) as slash-joined Antoine pairs"},
+        {"src": "$\\frac{\\frac{\\frac{a}{b}}{c}}{d}$", "expected": "⠆⠰⠁⠳⠰⠃⠀⠳⠰⠉⠰⠳⠰⠙", "note": "deep nest: triple nesting. Innermost a/b is simple → middle (a/b)/c is compound ⠆…⠰ (self-fenced). The outer numerator is now a fenced compound fraction, so the outer is back to simple form: compound(a/b/c) bar d"},
+        {"src": "$\\frac{\\sqrt{x}}{\\sqrt{y}}$", "expected": "⠩⠱⠰⠭⠹⠳⠩⠱⠰⠽⠹", "note": "deep nest: sqrt over sqrt (each radical self-fences with close ⠹ before/after the bar)"},
+        {"src": "$\\frac{1}{\\sqrt{x^2+1}}$", "expected": "⠼⠁⠳⠩⠱⠰⠭⠌⠆⠀⠖⠼⠁⠹", "note": "deep nest (ARCHITECTURE.md §10): 1 over sqrt of a polynomial with superscript inside the radical"}
       ]
     },
     "sqrt_root": {
@@ -44,7 +50,11 @@
         {"src": "$\\sqrt{\\pi}$", "expected": "⠩⠱⠨⠏⠹", "note": "sqrt of greek letter"},
         {"src": "$\\sqrt[3]{x}$", "expected": "⠩⠼⠉⠱⠰⠭⠹", "note": "cube root: open + degree + indicator + x + close"},
         {"src": "$\\sqrt[4]{x}$", "expected": "⠩⠼⠙⠱⠰⠭⠹", "note": "fourth root with degree 4"},
-        {"src": "$\\sqrt[n]{a}$", "expected": "⠩⠰⠝⠱⠰⠁⠹", "note": "nth root: degree is letter n"}
+        {"src": "$\\sqrt[n]{a}$", "expected": "⠩⠰⠝⠱⠰⠁⠹", "note": "nth root: degree is letter n"},
+        {"src": "$\\sqrt{\\sqrt{x}}$", "expected": "⠩⠱⠩⠱⠰⠭⠹⠹", "note": "deep nest (ARCHITECTURE.md §10): radical inside radical — two opens then two closes ⠹⠹ unwind the nesting"},
+        {"src": "$\\sqrt{\\sqrt{\\sqrt{x}}}$", "expected": "⠩⠱⠩⠱⠩⠱⠰⠭⠹⠹⠹", "note": "deep nest: triple-nested sqrt — three opens, three closes; verifies fence balance at depth 3"},
+        {"src": "$\\sqrt{\\frac{a}{b}}$", "expected": "⠩⠱⠰⠁⠳⠰⠃⠹", "note": "deep nest: simple fraction inside a radical (a/b sits between the radical fences)"},
+        {"src": "$\\sqrt{x^2+y^2}$", "expected": "⠩⠱⠰⠭⠌⠆⠀⠖⠰⠽⠌⠆⠹", "note": "deep nest: radical over a polynomial with two superscripts (x^2 + y^2)"}
       ]
     },
     "scripts": {
