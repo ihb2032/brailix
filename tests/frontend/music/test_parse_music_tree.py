@@ -198,7 +198,10 @@ class TestPlainAdapter:
 
 class TestUnknownSource:
     def test_unknown_source_returns_none_and_warns(self):
-        ctx = MusicContext(source="midi")  # not yet registered
+        # A name no adapter will ever claim — "midi"/"abc" are real
+        # (optional) adapters now, so naming one of those would flip
+        # this test red the moment its extra is installed.
+        ctx = MusicContext(source="nosuch")
         tree = parse_music_tree(b"\x00", ctx)
         assert tree is None
         codes = [w.code for w in ctx.warnings.warnings]

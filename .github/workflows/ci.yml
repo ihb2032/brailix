@@ -53,11 +53,15 @@ jobs:
           enable-cache: true
 
       # Installs the project + the `dev` dependency group (pytest plus the
-      # tokenizer / pinyin / LaTeX adapters the core test suite exercises).
-      # Optional adapters not in the dev group (partitura / abc) make their
-      # few tests skip, not fail.
+      # tokenizer / pinyin / LaTeX adapters the core test suite exercises),
+      # plus the light optional extras whose tests would otherwise skip:
+      # docx input (python-docx/lxml/olefile), MIDI + ABC score input
+      # (mido/partitura/abc-xml-converter) and the Japanese analyzers
+      # (fugashi/sudachi with their dictionaries). The heavyweight ML
+      # extras (hanlp / g2pw) stay out — their adapters are thin wrappers
+      # and the model downloads dwarf the suite.
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra docx --extra music --extra fugashi --extra sudachi
 
       - name: Run the test suite
         run: uv run pytest

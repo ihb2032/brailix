@@ -1,16 +1,22 @@
 """Shared digit-run → braille-cell emission for the number and math backends.
 
 Both backends turn a run of digit characters into cells with the same
-rules: an optional leading number sign, then per-char mapping of ``.`` /
+loop: an optional leading number sign, then per-char mapping of ``.`` /
 ``,`` / digits through the profile's ``decimal_point`` / ``thousands_sep``
-/ ``digits`` tables, with non-ASCII decimal digits (full-width ``２``,
-Arabic-Indic, ...) folded to their ASCII key.
+/ ``digits`` tables.
 
-They differ only in role labels, warning provenance, source-span
-granularity, and *when* the number sign fires — all passed in. Keeping
-the loop in one place means a digit-handling fix lands for both at once:
-previously the full-width fallback existed only in the number backend, so
-prose ``２`` rendered while ``<mn>２</mn>`` warned-and-dropped.
+They differ in role labels, warning provenance, source-span granularity,
+*when* the number sign fires — and, deliberately, in how non-ASCII
+decimal digits (full-width ``２``, Arabic-Indic, ...) are treated, all
+passed in by the caller:
+
+* **prose numbers fold** (``fold_nonascii=True``) — full-width digits are
+  routine typography in CJK running text, so ``２`` reads as ``2``;
+* **math numbers do not** (``fold_nonascii=False``) — a full-width digit
+  inside a formula is a writing error in the source document. Folding it
+  would silently translate a formula the author needs to fix, so it warns
+  and emits a blank unknown cell instead (domain-expert rule; the same
+  policy already applies to full-width letters and operators).
 """
 
 from __future__ import annotations
@@ -61,6 +67,7 @@ def emit_digit_run(
     warnings: WarningCollector,
     roles: DigitRoles,
     want_number_sign: bool,
+    fold_nonascii: bool,
     span_at: Callable[[int], Span | None],
     warn_source: str,
     unknown_code: str,
@@ -72,11 +79,13 @@ def emit_digit_run(
     ``want_number_sign`` is the caller's already-feature-gated decision
     (the number backend gates on ``number_sign``, the math backend on
     ``math.number_sign`` *and* its per-run latch); the leading sign still
-    only fires when the profile actually defines one. ``span_at(i)`` gives
-    the source span for the i-th character's cell — per-char for prose
-    numbers, a constant inline span for math. Unknown / unmapped chars get
-    a warning (under ``unknown_code`` / ``missing_code`` + ``warn_source``)
-    plus a blank ``unknown`` cell so proofreaders see the gap.
+    only fires when the profile actually defines one. ``fold_nonascii``
+    chooses the non-ASCII decimal digit policy (see the module docstring:
+    prose folds, math warns). ``span_at(i)`` gives the source span for the
+    i-th character's cell — per-char for prose numbers, a constant inline
+    span for math. Unknown / unmapped chars get a warning (under
+    ``unknown_code`` / ``missing_code`` + ``warn_source``) plus a blank
+    ``unknown`` cell so proofreaders see the gap.
     """
     if not digits:
         return
@@ -95,7 +104,9 @@ def emit_digit_run(
         elif ch == ",":
             dots, role = profile.thousands_sep, roles.thousands_sep
         else:
-            key = ch if ch in profile.digits else ascii_decimal_digit(ch)
+            key: str | None = ch
+            if ch not in profile.digits:
+                key = ascii_decimal_digit(ch) if fold_nonascii else None
             if key is None or key not in profile.digits:
                 warnings.warn(
                     code=unknown_code,

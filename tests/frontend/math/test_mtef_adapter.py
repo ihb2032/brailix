@@ -805,3 +805,944 @@ class TestAdapterContract:
 
         adapter = MtefMathSourceAdapter()
         assert isinstance(adapter, MathSourceAdapter)
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for the record-level coverage tests below
+# ---------------------------------------------------------------------------
+
+
+def _tree_shape(mathml: str) -> str:
+    """Serialise the element tree as ``tag(child,...)`` / ``tag:text``."""
+    root = ET.fromstring(mathml)
+
+    def fmt(el: ET.Element) -> str:
+        tag = _local(el.tag)
+        kids = list(el)
+        if kids:
+            return f"{tag}({','.join(fmt(k) for k in kids)})"
+        return f"{tag}:{el.text or ''}"
+
+    return ",".join(fmt(c) for c in root)
+
+
+def _v3tag(rec: int, opts: int = 0) -> bytes:
+    """v3 tag byte: record type in the low nibble, options in the high."""
+    return bytes([((opts & 0x0F) << 4) | (rec & 0x0F)])
+
+
+# ---------------------------------------------------------------------------
+# v5 — styling / definition records interleaved with content
+# ---------------------------------------------------------------------------
+
+
+class TestV5StylingRecordSkips:
+    """Style and definition records emit no MathML — braille rendering is
+    style-agnostic — but the parser must consume their exact byte
+    payloads or the equation body after them turns to garbage."""
+
+    def test_stray_embell_at_object_list_is_skipped(self):
+        stray = bytes([0x06, 0x00, 0x02])  # EMBELL outside any CHAR
+        payload = B.v5_prelude() + stray + B.v5_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_ruler_record_at_object_list_is_skipped(self):
+        ruler = bytes([0x07, 0x01, 0x00]) + B.u16_le(0x0120)
+        payload = B.v5_prelude() + ruler + B.v5_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_font_style_def_is_skipped(self):
+        font_style = bytes([0x08, 0x01, 0x00])  # index 1, plain style
+        payload = (
+            B.v5_prelude() + font_style + B.v5_simple_char_line(_ord("x"))
+        )
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_size_records_all_three_flavours(self):
+        # 101 → u16 point size, >=100 → signed 16-bit delta, else → one
+        # biased byte. All three must consume exactly their own bytes.
+        sizes = (
+            bytes([0x09, 101]) + B.u16_le(240)
+            + bytes([0x09, 100]) + B.u16_le(0xFFF6)
+            + bytes([0x09, 50, 130])
+        )
+        payload = B.v5_prelude() + sizes + B.v5_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_typesize_shorthand_tags_are_skipped(self):
+        shorthand = bytes([0x0A, 0x0B, 0x0C, 0x0D, 0x0E])  # FULL..SUBSYM
+        payload = (
+            B.v5_prelude() + shorthand + B.v5_simple_char_line(_ord("x"))
+        )
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_future_record_skipped_by_declared_length(self):
+        # Records >= 0x64 are reserved for future use and carry an
+        # explicit length so old parsers can hop over them.
+        future = bytes([0x64, 0x03, 0xAA, 0xBB, 0xCC])
+        payload = B.v5_prelude() + future + B.v5_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_eqn_prefs_truncated_styles_section(self):
+        # The styles count claims one entry but the stream ends — the
+        # skipper must bail out instead of reading past the buffer.
+        prefs = bytes([0x12, 0x00, 0x00, 0x00, 0x01])
+        payload = B.v5_prelude() + prefs
+        out = _to_mathml(payload)
+        assert "merror" not in out
+
+
+class TestV5Nudges:
+    def test_nudged_line(self):
+        line = bytes([0x01, 0x08]) + B.nudge_small() + B.v5_char(_ord("x")) + B.v5_end()
+        out = _to_mathml(B.v5_prelude() + line)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_wide_nudge_consumes_six_bytes(self):
+        line = bytes([0x01, 0x08]) + B.nudge_wide() + B.v5_char(_ord("x")) + B.v5_end()
+        out = _to_mathml(B.v5_prelude() + line)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_line_spacing_flag(self):
+        line = bytes([0x01, 0x04]) + B.u16_le(120) + B.v5_char(_ord("x")) + B.v5_end()
+        out = _to_mathml(B.v5_prelude() + line)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_nudged_char(self):
+        char = bytes([0x02, 0x08]) + B.nudge_small() + bytes([128]) + B.u16_le(_ord("x"))
+        out = _to_mathml(B.v5_prelude() + B.v5_line(char))
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_nudged_tmpl(self):
+        tmpl = (
+            bytes([0x03, 0x08])
+            + B.nudge_small()
+            + bytes([11, 0, 0])  # fraction selector, variation, options
+            + B.v5_simple_char_line(_ord("a"))
+            + B.v5_simple_char_line(_ord("b"))
+            + B.v5_end()
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert "<mfrac>" in out
+        assert "merror" not in out
+
+
+class TestV5CharVariants:
+    def test_char_with_16bit_font_position(self):
+        char = bytes([0x02, 0x10, 128]) + B.u16_le(_ord("x")) + B.u16_le(0x1234)
+        out = _to_mathml(B.v5_prelude() + B.v5_line(char))
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_extended_typeface_form(self):
+        # Typeface escapes the one-byte biased form with a 0xFF leader
+        # followed by a signed 16-bit value.
+        char = bytes([0x02, 0x00, 0xFF]) + B.u16_le(700) + B.u16_le(_ord("x"))
+        out = _to_mathml(B.v5_prelude() + B.v5_line(char))
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_whitespace_char_emits_nothing(self):
+        body = B.v5_char(_ord("a")) + B.v5_char(0x20) + B.v5_char(_ord("b"))
+        out = _to_mathml(B.v5_prelude() + B.v5_line(body))
+        assert _tree_shape(out) == "mi:a,mi:b"
+
+
+class TestV5EmbellVariants:
+    def test_slash_embell_renders_overlay(self):
+        out = _to_mathml(
+            B.v5_prelude() + B.v5_line(B.v5_char(_ord("a"), embells=[10]))
+        )
+        # Combining long solidus overlay next to the base.
+        assert "̸" in out
+
+    def test_underbar_embell_uses_munder(self):
+        out = _to_mathml(
+            B.v5_prelude() + B.v5_line(B.v5_char(_ord("a"), embells=[16]))
+        )
+        assert "<munder>" in out
+
+    def test_unknown_embell_code_leaves_base_alone(self):
+        out = _to_mathml(
+            B.v5_prelude() + B.v5_line(B.v5_char(_ord("a"), embells=[99]))
+        )
+        assert _tree_shape(out) == "mi:a"
+
+    def test_nudged_embell_record(self):
+        char = (
+            bytes([0x02, 0x01, 128])
+            + B.u16_le(_ord("a"))
+            + bytes([0x06, 0x08])
+            + B.nudge_small()
+            + bytes([2])  # dot above
+            + B.v5_end()
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(char))
+        assert "<mover>" in out
+
+    def test_style_records_inside_embell_list_are_skipped(self):
+        char = (
+            bytes([0x02, 0x01, 128])
+            + B.u16_le(_ord("a"))
+            + bytes([0x09, 50, 130])     # SIZE, one-byte flavour
+            + bytes([0x0F, 0x02])        # COLOR
+            + bytes([0x0A])              # FULL shorthand
+            + bytes([0x08, 0x01, 0x00])  # FONT_STYLE_DEF
+            + bytes([0x06, 0x00, 2])     # the actual dot-above embell
+            + B.v5_end()
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(char))
+        assert "<mover>" in out
+        assert "merror" not in out
+
+    def test_unknown_record_in_embell_list_is_error(self):
+        char = (
+            bytes([0x02, 0x01, 128])
+            + B.u16_le(_ord("a"))
+            + bytes([0x05])  # MATRIX record can't appear here
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(char))
+        assert "<merror" in out
+
+
+# ---------------------------------------------------------------------------
+# v5 — pile and matrix variants
+# ---------------------------------------------------------------------------
+
+
+class TestV5PileVariants:
+    def test_pile_at_top_level(self):
+        pile = B.v5_pile(
+            [
+                B.v5_line(B.v5_char(_ord("a"))),
+                B.v5_line(B.v5_char(_ord("b"))),
+            ]
+        )
+        out = _to_mathml(B.v5_prelude() + pile)
+        root = ET.fromstring(out)
+        mtable = _find_first(root, "mtable")
+        assert mtable is not None
+        assert len(list(mtable)) == 2
+
+    def test_nudged_pile_with_inline_ruler(self):
+        pile = (
+            bytes([0x04, 0x0A])  # PILE, opts = nudge | ruler
+            + B.nudge_small()
+            + bytes([1, 0])  # halign, valign
+            + bytes([0x01, 0x00]) + B.u16_le(0)  # inline ruler, one stop
+            + B.v5_line(B.v5_char(_ord("a")))
+            + B.v5_end()
+        )
+        out = _to_mathml(B.v5_prelude() + pile)
+        assert "<mtable>" in out
+        assert "<mi>a</mi>" in out
+        assert "merror" not in out
+
+    def test_pile_inside_tmpl_slot(self):
+        pile = B.v5_pile([B.v5_line(B.v5_char(_ord("a")))])
+        fence = B.v5_tmpl(1, [pile])  # parenthesised pile
+        out = _to_mathml(B.v5_prelude() + B.v5_line(fence))
+        assert "<mtable>" in out
+        assert '<mo fence="true">(</mo>' in out
+
+    def test_unexpected_record_in_pile_is_error(self):
+        pile = bytes([0x04, 0x00, 1, 0]) + B.v5_char(_ord("a")) + B.v5_end()
+        out = _to_mathml(B.v5_prelude() + pile)
+        assert "<merror" in out
+
+
+class TestV5MatrixVariants:
+    def test_nudged_matrix(self):
+        matrix = (
+            bytes([0x05, 0x08])
+            + B.nudge_small()
+            + bytes([0, 0, 0, 1, 1])  # valign, h_just, v_just, rows, cols
+            + bytes(1)  # row partition bits
+            + bytes(1)  # col partition bits
+            + B.v5_line(B.v5_char(_ord("a")))
+            + B.v5_end()
+        )
+        out = _to_mathml(B.v5_prelude() + matrix)
+        assert "<mtable>" in out
+        assert "<mi>a</mi>" in out
+        assert "merror" not in out
+
+    def test_truncated_matrix_pads_empty_cells(self):
+        # Declares 2x2 but carries only one LINE cell; the reader pads
+        # the remaining cells as empty <mtd> instead of crashing.
+        matrix = (
+            bytes([0x05, 0x00, 0, 0, 0, 2, 2])
+            + bytes(1)
+            + bytes(1)
+            + B.v5_line(B.v5_char(_ord("a")))
+            + bytes([0x00, 0x00, 0x00])  # END markers for the missing cells
+            + B.v5_end()
+        )
+        out = _to_mathml(B.v5_prelude() + matrix)
+        root = ET.fromstring(out)
+        mtable = _find_first(root, "mtable")
+        assert mtable is not None
+        rows = list(mtable)
+        assert len(rows) == 2
+        assert all(len(list(rw)) == 2 for rw in rows)
+
+    def test_matrix_inside_tmpl_slot(self):
+        matrix = B.v5_matrix(1, 1, [B.v5_line(B.v5_char(_ord("a")))])
+        fence = B.v5_tmpl(1, [matrix])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(fence))
+        assert "<mtable>" in out
+        assert '<mo fence="true">(</mo>' in out
+
+    def test_non_line_record_in_matrix_cell_is_error(self):
+        matrix = (
+            bytes([0x05, 0x00, 0, 0, 0, 1, 1])
+            + bytes(1)
+            + bytes(1)
+            + B.v5_char(_ord("a"))  # CHAR where a LINE cell must sit
+        )
+        out = _to_mathml(B.v5_prelude() + matrix)
+        assert "<merror" in out
+
+
+# ---------------------------------------------------------------------------
+# v5 — template selector variants
+# ---------------------------------------------------------------------------
+
+
+class TestV5TmplVariants:
+    def test_extended_variation_byte(self):
+        # The high bit on the variation byte announces a second
+        # variation byte (templates with >256 variations); handlers
+        # branch on the low byte only.
+        tmpl = (
+            bytes([0x03, 0x00, 28, 0x80, 0x42, 0x00])
+            + B.v5_null_line()
+            + B.v5_simple_char_line(_ord("2"))
+            + B.v5_end()
+        )
+        body = B.v5_char(_ord("x")) + tmpl
+        out = _to_mathml(B.v5_prelude() + B.v5_line(body))
+        assert _tree_shape(out) == "msup(mi:x,mn:2)"
+
+    def test_unknown_selector_passes_slots_through(self):
+        tmpl = B.v5_tmpl(
+            26,
+            [
+                B.v5_simple_char_line(_ord("a")),
+                B.v5_simple_char_line(_ord("b")),
+            ],
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert _tree_shape(out) == "mi:a,mi:b"
+        assert "merror" not in out
+
+    def test_fraction_with_no_slots_keeps_mathml_well_formed(self):
+        out = _to_mathml(B.v5_prelude() + B.v5_line(B.v5_tmpl(11, [])))
+        assert _tree_shape(out) == "mfrac(mrow:,mrow:)"
+
+    def test_template_after_sibling_stays_sibling(self):
+        # Only script templates hoist the preceding sibling; a fraction
+        # following a CHAR leaves the CHAR where it is.
+        body = B.v5_char(_ord("x")) + B.v5_tmpl(
+            11,
+            [
+                B.v5_simple_char_line(_ord("a")),
+                B.v5_simple_char_line(_ord("b")),
+            ],
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(body))
+        assert _tree_shape(out) == "mi:x,mfrac(mi:a,mi:b)"
+
+    def test_underbar_selector_12(self):
+        tmpl = B.v5_tmpl(12, [B.v5_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert _tree_shape(out) == "munder(mi:x,mo:¯)"
+
+    def test_overbar_selector_13(self):
+        tmpl = B.v5_tmpl(13, [B.v5_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert _tree_shape(out) == "mover(mi:x,mo:¯)"
+
+    def test_arrow_selector_14(self):
+        tmpl = B.v5_tmpl(14, [B.v5_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert _tree_shape(out) == "mover(mi:x,mo:→)"
+
+    def test_hbrace_over_selector_24(self):
+        tmpl = B.v5_tmpl(24, [B.v5_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert _tree_shape(out) == "mover(mi:x,mo:⏞)"
+
+    def test_hbrace_under_selector_25(self):
+        tmpl = B.v5_tmpl(25, [B.v5_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert _tree_shape(out) == "munder(mi:x,mo:⏟)"
+
+    def test_bigop_with_subscript_only(self):
+        tmpl = B.v5_tmpl(
+            16,
+            [
+                B.v5_simple_char_line(_ord("x")),
+                B.v5_simple_char_line(_ord("k")),
+            ],
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert "<munder>" in out
+        assert "<munderover>" not in out
+
+    def test_bigop_with_superscript_only(self):
+        tmpl = B.v5_tmpl(
+            16,
+            [
+                B.v5_simple_char_line(_ord("x")),
+                B.v5_null_line(),
+                B.v5_simple_char_line(_ord("n")),
+            ],
+        )
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert "<mover>" in out
+        assert "<munderover>" not in out
+
+    def test_custom_fence_with_body_only(self):
+        tmpl = B.v5_tmpl(8, [B.v5_simple_char_line(_ord("a"))])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        # No bracket slots → the fence row carries just the body.
+        assert _tree_shape(out) == "mrow(mi:a)"
+
+    def test_custom_fence_ignores_multi_atom_bracket_slot(self):
+        bracket = B.v5_line(B.v5_char(_ord("[")) + B.v5_char(_ord("(")))
+        tmpl = B.v5_tmpl(8, [B.v5_simple_char_line(_ord("a")), bracket])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert 'fence="true"' not in out
+        assert "<mi>a</mi>" in out
+
+    def test_definition_records_inside_tmpl_slot_list(self):
+        # Definitions only need to precede first use, so every
+        # definition / styling record may sit inside a TMPL slot list.
+        recs = (
+            bytes([0x09, 50, 130])                      # SIZE
+            + bytes([0x0F, 0x02])                       # COLOR
+            + bytes([0x0A])                             # FULL shorthand
+            + bytes([0x08, 0x01, 0x00])                 # FONT_STYLE_DEF
+            + bytes([0x07, 0x00])                       # RULER, zero stops
+            + bytes([0x10, 0x05])                       # COLOR_DEF: RGBA+name
+            + B.u16_le(1) + B.u16_le(2) + B.u16_le(3) + B.u16_le(4)
+            + b"red\x00"
+            + bytes([0x11, 0x01]) + b"Euclid\x00"       # FONT_DEF
+            + bytes([0x11, 0xFF]) + B.u16_le(300)       # FONT_DEF, extended
+            + b"Euclid Extra\x00"
+            + bytes([0x12, 0x00, 0x00, 0x00, 0x00])     # EQN_PREFS, empty
+            + bytes([0x13]) + b"MTEF\x00"               # ENCODING_DEF
+        )
+        slot = recs + B.v5_line(B.v5_char(_ord("a")))
+        tmpl = B.v5_tmpl(1, [slot])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert "<mi>a</mi>" in out
+        assert '<mo fence="true">(</mo>' in out
+        assert "merror" not in out
+
+    def test_unknown_record_in_tmpl_slot_list_is_error(self):
+        tmpl = B.v5_tmpl(1, [bytes([0x20])])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert "<merror" in out
+
+
+# ---------------------------------------------------------------------------
+# v5 — malformed input
+# ---------------------------------------------------------------------------
+
+
+class TestV5Malformed:
+    def test_future_version_prelude_is_error(self):
+        payload = bytes([6, 1, 0, 11, 0]) + b"DSMT7\x00" + bytes([0])
+        payload += B.v5_simple_char_line(_ord("x"))
+        out = MtefMathSourceAdapter().to_mathml(payload)
+        assert "<merror" in out
+
+    def test_unknown_record_type_is_error(self):
+        payload = B.v5_prelude() + bytes([0x20])
+        out = _to_mathml(payload)
+        assert "<merror" in out
+
+    def test_line_nesting_too_deep_is_error(self):
+        body = B.v5_char(_ord("x"))
+        for _ in range(70):
+            body = B.v5_line(body)
+        out = _to_mathml(B.v5_prelude() + body)
+        assert "<merror" in out
+
+    def test_tmpl_nesting_too_deep_is_error(self):
+        tmpl = B.v5_simple_char_line(_ord("x"))
+        for _ in range(70):
+            tmpl = B.v5_tmpl(1, [tmpl])
+        out = _to_mathml(B.v5_prelude() + B.v5_line(tmpl))
+        assert "<merror" in out
+
+    def test_char_truncated_mid_mtcode_is_error(self):
+        # CHAR promises a 16-bit MTCode but the stream ends after one byte.
+        payload = B.v5_prelude() + bytes([0x02, 0x00, 128, 0x78])
+        out = _to_mathml(payload)
+        assert "<merror" in out
+
+
+# ---------------------------------------------------------------------------
+# v3 — option flags and styling records
+# ---------------------------------------------------------------------------
+
+
+class TestV3RecordSkips:
+    def test_line_with_nudge_spacing_and_ruler(self):
+        # All three option payloads in their wire order: nudge, then the
+        # one-byte line spacing, then the RULER record.
+        line = (
+            _v3tag(0x01, 0x0E)
+            + B.nudge_small()
+            + bytes([12])  # line spacing
+            + _v3tag(0x07) + bytes([0x01, 0x00]) + B.u16_le(0)
+            + B.v3_char(_ord("x"))
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + line)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_line_ruler_flag_without_ruler_record_is_error(self):
+        line = _v3tag(0x01, 0x02) + B.v3_char(_ord("x")) + B.v3_end()
+        out = _to_mathml(B.v3_prelude() + line)
+        assert "<merror" in out
+
+    def test_nudged_char(self):
+        char = _v3tag(0x02, 0x08) + B.nudge_small() + bytes([128]) + B.u16_le(_ord("x"))
+        out = _to_mathml(B.v3_prelude() + B.v3_line(char))
+        assert "<mi>x</mi>" in out
+
+    def test_wide_nudge_consumes_six_bytes(self):
+        line = _v3tag(0x01, 0x08) + B.nudge_wide() + B.v3_char(_ord("x")) + B.v3_end()
+        out = _to_mathml(B.v3_prelude() + line)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_stray_embells_at_object_list_are_skipped(self):
+        strays = (
+            _v3tag(0x06, 0x08) + B.nudge_small() + bytes([2])  # nudged
+            + _v3tag(0x06) + bytes([2])                        # plain
+        )
+        payload = B.v3_prelude() + strays + B.v3_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_ruler_record_at_object_list_is_skipped(self):
+        ruler = _v3tag(0x07) + bytes([0x01, 0x00]) + B.u16_le(0x0120)
+        payload = B.v3_prelude() + ruler + B.v3_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_font_record_is_skipped(self):
+        font = _v3tag(0x08) + bytes([129, 1]) + b"Symbol\x00"
+        payload = B.v3_prelude() + font + B.v3_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_size_records_all_three_flavours(self):
+        sizes = (
+            _v3tag(0x09) + bytes([101]) + B.u16_le(240)
+            + _v3tag(0x09) + bytes([100, 3]) + B.u16_le(0xFFF6)
+            + _v3tag(0x09) + bytes([50, 130])
+        )
+        payload = B.v3_prelude() + sizes + B.v3_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_typesize_shorthand_tags_are_skipped(self):
+        shorthand = (
+            _v3tag(0x0A) + _v3tag(0x0B) + _v3tag(0x0C)
+            + _v3tag(0x0D) + _v3tag(0x0E)
+        )
+        payload = B.v3_prelude() + shorthand + B.v3_simple_char_line(_ord("x"))
+        out = _to_mathml(payload)
+        assert "<mi>x</mi>" in out
+        assert "merror" not in out
+
+    def test_unknown_record_type_is_error(self):
+        payload = B.v3_prelude() + _v3tag(0x0F)
+        out = _to_mathml(payload)
+        assert "<merror" in out
+
+    def test_line_nesting_too_deep_is_error(self):
+        body = B.v3_char(_ord("x"))
+        for _ in range(70):
+            body = B.v3_line(body)
+        out = _to_mathml(B.v3_prelude() + body)
+        assert "<merror" in out
+
+
+class TestV3CharEmbells:
+    def test_char_with_embell_list(self):
+        out = _to_mathml(
+            B.v3_prelude() + B.v3_line(B.v3_char(_ord("a"), embells=[2]))
+        )
+        assert "<mover>" in out
+
+    def test_nudged_embell_record(self):
+        char = (
+            _v3tag(0x02, 0x0A)  # nudge + embell flags
+            + B.nudge_small()
+            + bytes([128])
+            + B.u16_le(_ord("a"))
+            + _v3tag(0x06, 0x08) + B.nudge_small() + bytes([2])
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(char))
+        assert "<mover>" in out
+
+    def test_style_records_inside_embell_list_are_skipped(self):
+        char = (
+            _v3tag(0x02, 0x02)
+            + bytes([128])
+            + B.u16_le(_ord("a"))
+            + _v3tag(0x09) + bytes([50, 130])           # SIZE
+            + _v3tag(0x0A)                              # FULL shorthand
+            + _v3tag(0x08) + bytes([129, 1]) + b"X\x00"  # FONT
+            + _v3tag(0x06) + bytes([2])
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(char))
+        assert "<mover>" in out
+        assert "merror" not in out
+
+    def test_unknown_record_in_embell_list_is_error(self):
+        char = (
+            _v3tag(0x02, 0x02)
+            + bytes([128])
+            + B.u16_le(_ord("a"))
+            + _v3tag(0x05)
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(char))
+        assert "<merror" in out
+
+
+# ---------------------------------------------------------------------------
+# v3 — template selector variants
+# ---------------------------------------------------------------------------
+
+
+class TestV3TemplateVariants:
+    def test_nudged_tmpl(self):
+        tmpl = (
+            _v3tag(0x03, 0x08)
+            + B.nudge_small()
+            + bytes([14, 0, 0])
+            + B.v3_simple_char_line(_ord("a"))
+            + B.v3_simple_char_line(_ord("b"))
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<mfrac>" in out
+
+    def test_root_with_index_selector_13(self):
+        tmpl = B.v3_tmpl(
+            13,
+            [
+                B.v3_simple_char_line(_ord("x")),
+                B.v3_simple_char_line(_ord("3")),
+            ],
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "mroot(mi:x,mn:3)"
+
+    def test_slash_fraction_selector_41(self):
+        tmpl = B.v3_tmpl(
+            41,
+            [
+                B.v3_simple_char_line(_ord("a")),
+                B.v3_simple_char_line(_ord("b")),
+            ],
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "mrow(mi:a,mo:/,mi:b)"
+
+    def test_scripts_variation_zero_passes_base_through(self):
+        tmpl = B.v3_tmpl(15, [B.v3_simple_char_line(_ord("x"))], variation=0)
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "mi:x"
+
+    def test_underbar_selector_16(self):
+        tmpl = B.v3_tmpl(16, [B.v3_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "munder(mi:x,mo:¯)"
+
+    def test_overbar_selector_17(self):
+        tmpl = B.v3_tmpl(17, [B.v3_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "mover(mi:x,mo:¯)"
+
+    def test_bigop_with_subscript_only(self):
+        tmpl = B.v3_tmpl(
+            29,
+            [
+                B.v3_simple_char_line(_ord("x")),
+                B.v3_simple_char_line(_ord("k")),
+            ],
+            variation=0x01,
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<munder>" in out
+        assert "<munderover>" not in out
+
+    def test_bigop_with_superscript_only(self):
+        tmpl = B.v3_tmpl(
+            29,
+            [
+                B.v3_simple_char_line(_ord("x")),
+                B.v3_null_line(),
+                B.v3_simple_char_line(_ord("n")),
+            ],
+            variation=0x02,
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<mover>" in out
+        assert "<munderover>" not in out
+
+    def test_bigop_without_scripts(self):
+        tmpl = B.v3_tmpl(29, [B.v3_simple_char_line(_ord("x"))], variation=0)
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "mrow(mo:∑,mi:x)"
+
+    def test_limits_selector_39(self):
+        tmpl = B.v3_tmpl(
+            39,
+            [
+                B.v3_simple_char_line(_ord("f")),
+                B.v3_simple_char_line(_ord("n")),
+            ],
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "munder(mi:f,mi:n)"
+
+    def test_hbrace_over_selector_27(self):
+        tmpl = B.v3_tmpl(27, [B.v3_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "mover(mi:x,mo:⏞)"
+
+    def test_hbrace_under_selector_28(self):
+        tmpl = B.v3_tmpl(28, [B.v3_simple_char_line(_ord("x"))])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "munder(mi:x,mo:⏟)"
+
+    def test_left_prescripts_selector_44(self):
+        tmpl = B.v3_tmpl(
+            44,
+            [
+                B.v3_simple_char_line(_ord("U")),
+                B.v3_simple_char_line(_ord("Z")),
+                B.v3_simple_char_line(_ord("A")),
+            ],
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<mmultiscripts>" in out
+        assert "<mprescripts" in out
+
+    def test_bare_char_as_tmpl_slot(self):
+        # v3 allows a bare CHAR record (no LINE wrapper) per slot.
+        tmpl = (
+            _v3tag(0x03)
+            + bytes([14, 0, 0])
+            + B.v3_char(_ord("x"))
+            + B.v3_char(_ord("y"))
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert _tree_shape(out) == "mfrac(mi:x,mi:y)"
+
+    def test_nested_tmpl_as_slot(self):
+        inner = B.v3_tmpl(1, [B.v3_simple_char_line(_ord("a"))])
+        tmpl = B.v3_tmpl(14, [inner, B.v3_simple_char_line(_ord("b"))])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<mfrac>" in out
+        assert '<mo fence="true">(</mo>' in out
+
+    def test_pile_as_tmpl_slot(self):
+        pile = B.v3_pile([B.v3_simple_char_line(_ord("a"))])
+        tmpl = B.v3_tmpl(1, [pile])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<mtable>" in out
+
+    def test_matrix_as_tmpl_slot(self):
+        matrix = B.v3_matrix(1, 1, [B.v3_simple_char_line(_ord("a"))])
+        tmpl = B.v3_tmpl(1, [matrix])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<mtable>" in out
+
+    def test_style_records_inside_tmpl_slot_list(self):
+        recs = (
+            _v3tag(0x09) + bytes([50, 130])
+            + _v3tag(0x0A)
+            + _v3tag(0x08) + bytes([129, 1]) + b"X\x00"
+        )
+        tmpl = B.v3_tmpl(1, [recs + B.v3_simple_char_line(_ord("a"))])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<mi>a</mi>" in out
+        assert "merror" not in out
+
+    def test_unknown_record_in_tmpl_slot_list_is_error(self):
+        tmpl = B.v3_tmpl(1, [_v3tag(0x0F)])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<merror" in out
+
+    def test_tmpl_nesting_too_deep_is_error(self):
+        tmpl = B.v3_simple_char_line(_ord("x"))
+        for _ in range(70):
+            tmpl = B.v3_tmpl(1, [tmpl])
+        out = _to_mathml(B.v3_prelude() + B.v3_line(tmpl))
+        assert "<merror" in out
+
+
+# ---------------------------------------------------------------------------
+# v3 — pile and matrix variants
+# ---------------------------------------------------------------------------
+
+
+class TestV3PileAndMatrix:
+    def test_pile_at_top_level(self):
+        pile = B.v3_pile(
+            [
+                B.v3_simple_char_line(_ord("a")),
+                B.v3_simple_char_line(_ord("b")),
+            ]
+        )
+        out = _to_mathml(B.v3_prelude() + pile)
+        root = ET.fromstring(out)
+        mtable = _find_first(root, "mtable")
+        assert mtable is not None
+        assert len(list(mtable)) == 2
+
+    def test_nudged_pile(self):
+        pile = (
+            _v3tag(0x04, 0x08)
+            + B.nudge_small()
+            + bytes([1, 0])
+            + B.v3_simple_char_line(_ord("a"))
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + pile)
+        assert "<mtable>" in out
+        assert "merror" not in out
+
+    def test_pile_with_ruler_option(self):
+        pile = (
+            _v3tag(0x04, 0x02)
+            + bytes([1, 0])
+            + _v3tag(0x07) + bytes([0x00])  # RULER record, zero stops
+            + B.v3_simple_char_line(_ord("a"))
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + pile)
+        assert "<mtable>" in out
+        assert "merror" not in out
+
+    def test_unexpected_record_in_pile_is_error(self):
+        pile = _v3tag(0x04) + bytes([1, 0]) + B.v3_char(_ord("a")) + B.v3_end()
+        out = _to_mathml(B.v3_prelude() + pile)
+        assert "<merror" in out
+
+    def test_nudged_matrix(self):
+        matrix = (
+            _v3tag(0x05, 0x08)
+            + B.nudge_small()
+            + bytes([0, 0, 0, 1, 1])
+            + bytes(1)
+            + bytes(1)
+            + B.v3_simple_char_line(_ord("a"))
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + matrix)
+        assert "<mtable>" in out
+        assert "merror" not in out
+
+    def test_truncated_matrix_pads_empty_cells(self):
+        matrix = (
+            _v3tag(0x05)
+            + bytes([0, 0, 0, 2, 2])
+            + bytes(1)
+            + bytes(1)
+            + B.v3_simple_char_line(_ord("a"))
+            + bytes([0x00, 0x00, 0x00])
+            + B.v3_end()
+        )
+        out = _to_mathml(B.v3_prelude() + matrix)
+        root = ET.fromstring(out)
+        mtable = _find_first(root, "mtable")
+        assert mtable is not None
+        rows = list(mtable)
+        assert len(rows) == 2
+        assert all(len(list(rw)) == 2 for rw in rows)
+
+    def test_non_line_record_in_matrix_cell_is_error(self):
+        matrix = (
+            _v3tag(0x05)
+            + bytes([0, 0, 0, 1, 1])
+            + bytes(1)
+            + bytes(1)
+            + B.v3_char(_ord("a"))
+        )
+        out = _to_mathml(B.v3_prelude() + matrix)
+        assert "<merror" in out
+
+
+# ---------------------------------------------------------------------------
+# Payload-level edges (both dialects)
+# ---------------------------------------------------------------------------
+
+
+class TestPayloadEdges:
+    def test_invalid_hex_string_is_error(self):
+        out = MtefMathSourceAdapter().to_mathml("zz")
+        assert "<merror" in out
+
+    def test_header_only_payload_is_error(self):
+        # A bare EQNOLEFILEHDR with nothing after it.
+        header = bytes([0x1C, 0x00]) + bytes([0x00, 0x00, 0x02, 0x00]) + bytes(22)
+        out = MtefMathSourceAdapter().to_mathml(header)
+        assert "<merror" in out
+
+    def test_v5_char_without_mtcode_emits_nothing(self):
+        # opts 0x20 = "no MTCode stored"; 0x04 = 8-bit font position. The
+        # record carries glyph-position data only, so no atom comes out.
+        silent = bytes([0x02, 0x24, 128, 0x33])
+        body = B.v5_char(_ord("a")) + silent + B.v5_char(_ord("b"))
+        out = _to_mathml(B.v5_prelude() + B.v5_line(body))
+        assert _tree_shape(out) == "mi:a,mi:b"
+
+    def test_v5_pile_truncated_at_eof_keeps_rows(self):
+        pile = bytes([0x04, 0x00, 1, 0]) + B.v5_line(B.v5_char(_ord("a")))
+        out = _to_mathml(B.v5_prelude() + pile)  # no trailing END
+        assert "<mtable>" in out
+        assert "<mi>a</mi>" in out
+        assert "merror" not in out
+
+    def test_v3_pile_truncated_at_eof_keeps_rows(self):
+        pile = _v3tag(0x04) + bytes([1, 0]) + B.v3_simple_char_line(_ord("a"))
+        out = _to_mathml(B.v3_prelude() + pile)  # no trailing END
+        assert "<mtable>" in out
+        assert "<mi>a</mi>" in out
+        assert "merror" not in out

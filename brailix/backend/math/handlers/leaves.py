@@ -238,6 +238,10 @@ def _emit_mn(
         want_number_sign=(
             mctx.need_number_sign and profile.feature("math.number_sign", True)
         ),
+        # A full-width digit inside a formula is a source writing error —
+        # warn instead of silently normalising it (matches the policy for
+        # full-width letters / operators).
+        fold_nonascii=False,
         span_at=lambda _i: mctx.span,
         number_sign_span=mctx.span,
         warn_source="backend.math",

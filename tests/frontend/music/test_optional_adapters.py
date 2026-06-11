@@ -77,3 +77,28 @@ class TestAbcAdapter:
         assert tree is None
         codes = [w.code for w in ctx.warnings.warnings]
         assert "MUSIC_ADAPTER_MISSING" in codes
+
+
+class TestMissingExtraPath:
+    """The two skipif tests above each only run in one kind of
+    environment; this one pins the missing-extra path in every
+    environment by registering an adapter whose loader fails the way
+    a missing optional dependency does."""
+
+    def test_missing_extra_warns_with_install_hint(self):
+        def _loader():
+            raise ImportError("synthetic: optional dependency absent")
+
+        music_source_registry.register("fake-optional", _loader, extra="midi")
+        try:
+            ctx = MusicContext(source="fake-optional")
+            tree = parse_music_tree(b"\x00", ctx)
+            assert tree is None
+            warning = next(
+                w
+                for w in ctx.warnings.warnings
+                if w.code == "MUSIC_ADAPTER_MISSING"
+            )
+            assert "pip install brailix[midi]" in warning.message
+        finally:
+            music_source_registry.unregister("fake-optional")

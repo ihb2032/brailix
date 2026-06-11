@@ -146,8 +146,10 @@ class TestSudachi:
         pytest.importorskip("sudachipy")
         pytest.importorskip("sudachidict_core")
         ana = analyzer_registry.get("sudachi")
-        toks = ana.analyze("私")
-        assert any(t.reading == "ワタシ" for t in toks)
+        toks = ana.analyze("東京")
+        # Sudachi exposes the dictionary 読み, not the 発音形: long
+        # vowels stay spelled out (トウキョウ, never トーキョー).
+        assert any(t.reading == "トウキョウ" for t in toks)
 
 
 class TestFugashi:
