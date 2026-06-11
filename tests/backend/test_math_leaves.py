@@ -390,14 +390,15 @@ class TestMnExtras:
         assert any(c.role == "unknown" for c in cells)
         assert any(w.code == "MATH_UNKNOWN_DIGIT" for w in wc)
 
-    def test_mn_fullwidth_digit_renders(self, profile):
-        # Full-width digits flow through the shared emitter's ASCII
-        # fallback now — previously math dropped them with a warning
-        # while prose numbers rendered them (the fixed divergence).
+    def test_mn_fullwidth_digit_is_writing_error(self, profile):
+        # A full-width digit inside a formula is a source writing error:
+        # warn and blank, never silently fold to the half-width digit.
+        # (Prose numbers keep folding — full-width digits are routine
+        # typography in CJK running text; the divergence is deliberate.)
         cells, wc = emit(mml("<math><mn>２</mn></math>"), profile)
-        digit_cells = [c for c in cells if c.role == "math_digit"]
-        assert [c.dots for c in digit_cells] == [profile.digits["2"]]
-        assert not any(w.code == "MATH_UNKNOWN_DIGIT" for w in wc)
+        assert not any(c.role == "math_digit" for c in cells)
+        assert any(c.role == "unknown" and c.dots == () for c in cells)
+        assert any(w.code == "MATH_UNKNOWN_DIGIT" for w in wc)
 
     def test_mn_with_features_number_sign_off(self, profile, monkeypatch):
         # math.number_sign gates the math backend's number sign behaviour

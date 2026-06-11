@@ -550,8 +550,15 @@ def _math_property_of(pr: ET.Element, child_name: str) -> str | None:
     if child is None:
         return None
     # ``m:val`` lives in the OMML namespace; ``val`` is a Word-extension
-    # alias some tooling emits. Try both.
-    return child.get(_OMML_PREFIX + "val") or child.get("val")
+    # alias some tooling emits. Fall back to the alias only when the
+    # namespaced attribute is ABSENT — an explicit empty value is
+    # meaningful (Word writes ``<m:endChr m:val=""/>`` for "no right
+    # delimiter" in piecewise-function braces; an ``or`` chain would
+    # swallow it and invent a phantom ``)`` downstream).
+    value = child.get(_OMML_PREFIX + "val")
+    if value is None:
+        value = child.get("val")
+    return value
 
 
 def _mtext(text: str) -> ET.Element:

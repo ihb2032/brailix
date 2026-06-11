@@ -214,7 +214,7 @@ class TestSoftFailure:
         # None, so the populated MusicInline carries score=None and
         # the backend emits per-char unknown cells.
         doc = DocumentIR(
-            blocks=[ScoreBlock(text="anything", source="midi")]
+            blocks=[ScoreBlock(text="anything", source="nosuch")]
         )
         result = pipe.translate_document(doc)
         codes = [w.code for w in result.warnings.warnings]

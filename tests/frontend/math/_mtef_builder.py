@@ -193,6 +193,22 @@ def v5_inline_ruler_line(body: bytes, *, stops: list[tuple[int, int]] | None = N
     return bytes(payload)
 
 
+def nudge_small(dx: int = 130, dy: int = 126) -> bytes:
+    """Two-byte nudge payload (any pair except the 128,128 wide leader).
+
+    Shared by v3 and v5 — both read two raw bytes and only switch to the
+    six-byte wide form when they equal (128, 128).
+    """
+    assert (dx, dy) != (128, 128), "use nudge_wide() for the wide form"
+    return bytes([dx & 0xFF, dy & 0xFF])
+
+
+def nudge_wide(dx: int = 300, dy: int = -200) -> bytes:
+    """Six-byte wide nudge: the 128,128 leader plus two signed 16-bit
+    little-endian deltas."""
+    return bytes([128, 128]) + u16_le(dx & 0xFFFF) + u16_le(dy & 0xFFFF)
+
+
 # ---------------------------------------------------------------------------
 # v3 helpers
 # ---------------------------------------------------------------------------
@@ -263,6 +279,20 @@ def v3_matrix(
     out.extend(col_parts)
     for c in cells:
         out.extend(c)
+    out.append(0x00)
+    return bytes(out)
+
+
+def v3_pile(rows: list[bytes]) -> bytes:
+    """v3 PILE, plain form — tag + halign + valign + LINE rows + END.
+
+    Variants with option flags (nudge before the alignment bytes, ruler
+    after them) interleave their payloads at different offsets, so tests
+    exercising those hand-roll the bytes instead.
+    """
+    out = bytearray([_tag(0x04, 0x0), 1, 0])  # halign=left, valign=top
+    for r in rows:
+        out.extend(r)
     out.append(0x00)
     return bytes(out)
 

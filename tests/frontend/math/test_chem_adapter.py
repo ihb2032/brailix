@@ -464,8 +464,9 @@ class TestNonStandardCharsAreFlaggedNotFolded:
     def test_fullwidth_letters_flagged_in_place(self):
         out = convert_ce("Ｈ２Ｏ")
         assert ET.fromstring(out).get("data-bk-chem") == "1"  # not whole-merror
-        # the full-width letters are flagged; the full-width digit ２ folds
-        # downstream in the backend digit path, so it isn't flagged here.
+        # the full-width letters are flagged here; the full-width digit ２
+        # passes through structurally and the backend digit path flags it
+        # (same writing-error policy, different layer).
         assert [e.text for e in self._soft(out)] == ["Ｈ", "Ｏ"]
 
     def test_fullwidth_operator_flagged_not_folded(self):
@@ -605,3 +606,120 @@ class TestStructuralBondMarkers:
         # the '=' inside the ethylene reactant is a double bond — not the
         # yields, even though the whole expression is a reaction.
         assert self._bonds(convert_ce("CH2=CH2 + H2 -> CH3CH3")) == ["double"]
+
+
+# ---------------------------------------------------------------------------
+# Adapter input forms: bytes and empty input
+# ---------------------------------------------------------------------------
+
+
+class TestAdapterInputForms:
+    def test_utf8_bytes_are_decoded(self):
+        out = ChemMathSourceAdapter().to_mathml(b"H2O")
+        assert ET.fromstring(out).get("data-bk-chem") == "1"
+
+    def test_non_utf8_bytes_degrade_to_merror(self):
+        err = _merror(ChemMathSourceAdapter().to_mathml(b"\xc3\x28"))
+        assert err is not None
+        assert err.get("data-reason") == "non-utf8 bytes"
+
+    @pytest.mark.parametrize("formula", ["", "   ", "$$"])
+    def test_empty_input_is_merror(self, formula):
+        err = _merror(ChemMathSourceAdapter().to_mathml(formula))
+        assert err is not None
+        assert err.get("data-reason") == "empty input"
+
+
+# ---------------------------------------------------------------------------
+# Reaction-condition edge forms: braces, prose fallback, unbalanced groups
+# ---------------------------------------------------------------------------
+
+
+class TestConditionEdgeForms:
+    def test_braced_heat_condition_unwraps_braces(self):
+        # mhchem grouping braces around a condition: ->[{\Delta}] reads the
+        # same as ->[\Delta].
+        root = ET.fromstring(convert_ce(r"A ->[{\Delta}] B"))
+        mover = root.find(f"{_NS}mover")
+        assert mover is not None
+        assert mover[1].tag == f"{_NS}mi" and mover[1].text == "Δ"
+
+    def test_lowercase_prose_condition_falls_back_to_mtext(self):
+        # "cat" (catalyst shorthand) is not a formula — formula letters must
+        # be capitalised — so the condition is carried as an <mtext>
+        # placeholder instead of degrading the whole equation.
+        root = ET.fromstring(convert_ce("A ->[cat] B"))
+        mover = root.find(f"{_NS}mover")
+        assert mover is not None
+        assert mover[1].tag == f"{_NS}mtext" and mover[1].text == "cat"
+
+    def test_unbalanced_condition_bracket_degrades(self):
+        # ->[O2 with no closing ] — the condition scanner backs off and the
+        # group parser flags the whole formula.
+        assert _merror(convert_ce("A ->[O2 B")) is not None
+
+    def test_under_only_condition_builds_munder(self):
+        # The munder branch of the connector builder. The public mhchem
+        # grammar always fills the above slot first (even ->[][x] yields an
+        # empty-string above, not None), so under-only is exercised on the
+        # builder directly.
+        from brailix.frontend.math.adapters.chem import _connector_mathml
+
+        frag = ET.fromstring(_connector_mathml("=", None, "O2"))
+        assert frag.tag == "munder"
+        assert frag[0].tag == "mo" and frag[0].text == "="
+        assert frag[1].find(".//mi").text == "O"
+
+
+# ---------------------------------------------------------------------------
+# Group edge cases: empty group, multiplier + charge on one group
+# ---------------------------------------------------------------------------
+
+
+class TestGroupEdgeCases:
+    def test_empty_paren_group_degrades(self):
+        # Ca() — an empty group holds no chemical content.
+        err = _merror(convert_ce("Ca()"))
+        assert err is not None
+        assert "no chemical content" in err.get("data-reason", "")
+
+    def test_group_with_multiplier_and_charge_is_msubsup(self):
+        # (Hg)2^2+ — the mercury(I) dimer written with an explicit group:
+        # whole-group multiplier 2 AND a 2+ charge → flat <msubsup>.
+        root = ET.fromstring(convert_ce("(Hg)2^2+"))
+        msubsup = root.find(f"{_NS}msubsup")
+        assert msubsup is not None
+        base, sub, sup = msubsup[0], msubsup[1], msubsup[2]
+        assert base.tag == f"{_NS}mrow"
+        assert base[0].text == "(" and base[-1].text == ")"
+        assert sub.tag == f"{_NS}mn" and sub.text == "2"
+        assert sup.find(f"{_NS}mn").text == "2"
+        assert sup.find(f"{_NS}mo").text == "+"
+
+
+# ---------------------------------------------------------------------------
+# Charge-probe edge cases: a trailing ^ is the gas arrow; an unclosed
+# braced charge is flagged in place
+# ---------------------------------------------------------------------------
+
+
+class TestChargeProbeEdgeCases:
+    def test_attached_trailing_caret_is_gas_arrow(self):
+        # O2^ — a ^ flush at the end is the mhchem gas arrow (the charge
+        # probe declines it: no sign follows), not a charge.
+        out = convert_ce("O2^")
+        assert _merror(out) is None
+        assert [e.text for e in ET.fromstring(out).iter(f"{_NS}mo")] == ["↑"]
+
+    def test_unclosed_braced_charge_flagged_in_place(self):
+        # O^{2- (missing }) is not a charge: the stray ^ { - are flagged in
+        # place (soft merror) and the rest still translates.
+        root = ET.fromstring(convert_ce("O^{2-"))
+        assert root.get("data-bk-chem") == "1"
+        assert root.find(f"{_NS}msup") is None
+        soft = [
+            e.text
+            for e in root.iter(f"{_NS}merror")
+            if e.get("data-bk-soft") == "1"
+        ]
+        assert soft == ["^", "{", "-"]

@@ -541,8 +541,8 @@ def _handle_script(p: _Parser) -> Node:
     Word's EQ field uses ``\\up`` for "raise by N points" (rendered as
     superscript) and ``\\do`` for "lower" (subscript). The point value
     affects only visual height — we treat any non-zero N the same.
-    Options ``\\ai`` / ``\\di`` (above/below italic) are accepted but
-    do not alter the kind.
+    Options ``\\ai`` / ``\\di`` (add space above/below the line) take
+    the same optional point count and do not alter the kind.
     """
     kind = "sup"  # default if no direction switch given
     while True:
@@ -561,6 +561,7 @@ def _handle_script(p: _Parser) -> Node:
             kind = "sub"
         elif opt in ("ai", "di"):
             p._consume()
+            p._read_int()
         else:
             break
     args = p._parse_arg_list()

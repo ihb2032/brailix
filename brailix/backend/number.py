@@ -223,6 +223,8 @@ def _digits_to_cells(
         warnings=ctx.warnings,
         roles=_NUMBER_ROLES,
         want_number_sign=profile.feature("number_sign", True),
+        # Full-width digits are routine typography in CJK prose — fold.
+        fold_nonascii=True,
         span_at=span_at,
         warn_source="backend.number",
         unknown_code="UNKNOWN_DIGIT",

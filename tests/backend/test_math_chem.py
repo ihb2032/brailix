@@ -603,9 +603,11 @@ class TestNonStandardCharWarnings:
     def test_fullwidth_letter_warns_at_warn_level_not_translated(self, profile):
         cells, wc = ce_cells("Ｈ２Ｏ", profile)
         hits = wc.by_code("MATH_NONSTANDARD_CHAR")
-        assert len(hits) == 2  # Ｈ and Ｏ (the full-width digit ２ folds)
+        assert len(hits) == 2  # Ｈ and Ｏ flagged by the frontend
         assert all(h.level is WarningLevel.WARN for h in hits)
         assert "half-width" in hits[0].message
+        # the full-width digit ２ is flagged by the backend digit path
+        assert wc.by_code("MATH_UNKNOWN_DIGIT")
         # not silently translated as if it were H2O
         b, _ = ce_cells("H2O", profile)
         assert dots(cells) != dots(b)
@@ -751,3 +753,209 @@ class TestReverseArrow:
     def test_reverse_arrow_is_not_the_math_left_arrow(self, profile):
         # ⠫ (1-2-4-6, the math larr's lead cell) must not appear.
         assert (1, 2, 4, 6) not in dots(ce_cells("A <- B", profile)[0])
+
+
+# ---------------------------------------------------------------------------
+# Subscripted ion: the species' own subscript survives next to the charge
+# (Hg2^2+ — the frontend's flat <msubsup> base / sub / charge shape).
+# ---------------------------------------------------------------------------
+
+
+class TestSubscriptedIon:
+    def test_hg2_2plus(self, profile):
+        # Hg₂²⁺ = ⠠H g ⠆ ⠨ ⠼⠃ ⠠⠖ — the subscript keeps the lowered-digit
+        # form (no script marker), then the ordinary magnitude-2 charge tail.
+        cells, wc = ce_cells("Hg2^2+", profile)
+        assert dots(cells) == [
+            (6,), (1, 2, 5), (1, 2, 4, 5),   # ⠠ H g
+            (2, 3),                          # ₂ (lowered)
+            (4, 6),                          # ⠨ charge sign
+            (3, 4, 5, 6), (1, 2),            # ⠼ 2
+            (6,), (2, 3, 5),                 # ⠠ guard + ⠖
+        ]
+        assert any(c.role == "math_digit_lower" for c in cells)
+        assert not wc.warnings
+
+
+# ---------------------------------------------------------------------------
+# Dangling structural bond: a molecule run never ends on a bond, but the
+# bond itself still renders — faithful output for an incomplete formula.
+# ---------------------------------------------------------------------------
+
+
+class TestDanglingBond:
+    def test_trailing_double_bond_renders_tight(self, profile):
+        # CH2= (incomplete, as typed mid-edit) — ⠸ C H ₂ then the bond ⠶,
+        # tight, with no blank cell and no warning.
+        cells, wc = ce_cells("CH2=", profile)
+        assert dots(cells) == [
+            (4, 5, 6),                    # ⠸
+            (1, 4), (1, 2, 5), (2, 3),    # C H ₂
+            (2, 3, 5, 6),                 # ⠶ the dangling double bond
+        ]
+        assert cells[-1].role == "math_chem_bond"
+        assert not wc.warnings
+
+
+# ---------------------------------------------------------------------------
+# Hand-built chem MathML (the data-bk-chem ABI): trees from producers other
+# than the \ce adapter must degrade gracefully — empty leaves emit nothing,
+# unmapped characters warn and leave a blank unknown cell.
+# ---------------------------------------------------------------------------
+
+
+def raw_chem_cells(mathml: str, profile):
+    """Hand-built chem MathML string → (cells, warnings), backend only."""
+    tree = normalize(mathml)
+    wc = WarningCollector(mode=RunMode.NORMAL)
+    ctx = BackendContext(profile="cn_current", warnings=wc)
+    node = MathInline(surface="", source="chem", math=tree)
+    return translate(node, ctx, profile), wc
+
+
+class TestHandBuiltChemMathML:
+    def test_empty_element_symbol_emits_no_letters(self, profile):
+        cells, wc = raw_chem_cells(
+            '<math data-bk-chem="1"><mi></mi></math>', profile
+        )
+        assert all(c.role != "math_identifier" for c in cells)
+        assert not wc.warnings
+
+    def test_empty_state_label_emits_nothing(self, profile):
+        cells, wc = raw_chem_cells(
+            '<math data-bk-chem="1"><mtext data-bk-chem-state="1"></mtext></math>',
+            profile,
+        )
+        assert cells == []
+        assert not wc.warnings
+
+    def test_unmapped_state_char_warns_and_continues(self, profile):
+        cells, wc = raw_chem_cells(
+            '<math data-bk-chem="1"><mtext data-bk-chem-state="1">g1</mtext></math>',
+            profile,
+        )
+        hits = wc.by_code("MATH_UNKNOWN_IDENTIFIER")
+        assert len(hits) == 1 and "state letter" in hits[0].message
+        # ⠰ + g still render; the unmapped char degrades to a blank cell.
+        assert dots(cells) == [(5, 6), (1, 2, 4, 5), ()]
+        assert cells[-1].role == "unknown"
+
+    def test_unmapped_element_char_warns_and_continues(self, profile):
+        # A producer that bakes the Unicode subscript char into the symbol.
+        cells, wc = raw_chem_cells(
+            '<math data-bk-chem="1"><mi>H₂</mi></math>', profile
+        )
+        hits = wc.by_code("MATH_UNKNOWN_IDENTIFIER")
+        assert len(hits) == 1 and "chem element letter" in hits[0].message
+        assert dots(cells) == [(6,), (1, 2, 5), ()]
+        assert cells[-1].role == "unknown"
+
+    def test_non_digit_chem_subscript_warns(self, profile):
+        cells, wc = raw_chem_cells(
+            '<math data-bk-chem="1"><msub><mi>H</mi><mn>x</mn></msub></math>',
+            profile,
+        )
+        hits = wc.by_code("MATH_UNKNOWN_DIGIT")
+        assert len(hits) == 1 and "chem subscript" in hits[0].message
+        assert dots(cells) == [(4, 5, 6), (1, 2, 5), ()]
+
+    def test_non_digit_charge_magnitude_warns(self, profile):
+        cells, wc = raw_chem_cells(
+            '<math data-bk-chem="1">'
+            "<msup><mi>K</mi><mrow><mn>x</mn><mo>+</mo></mrow></msup>"
+            "</math>",
+            profile,
+        )
+        hits = wc.by_code("MATH_UNKNOWN_DIGIT")
+        assert len(hits) == 1 and "charge digit" in hits[0].message
+        # ⠠K ⠨ ⠼ <blank> ⠠ ⠖ — the magnitude slot degrades, the guarded
+        # plus tail still renders.
+        assert dots(cells) == [
+            (6,), (1, 3), (4, 6), (3, 4, 5, 6), (), (6,), (2, 3, 5)
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Defensive paths, exercised directly: no shipped profile / \ce input can
+# reach them (the cn tables map every arrow and sign the frontend emits).
+# ---------------------------------------------------------------------------
+
+
+class _EmptySymbolProfile:
+    """A stub profile whose math symbol table maps nothing."""
+
+    def math_symbol(self, _ch):
+        return None
+
+
+class TestDefensivePaths:
+    def test_is_heat_with_no_node_is_false(self):
+        from brailix.backend.math.chem import _is_heat
+
+        assert _is_heat(None) is False
+
+    def test_arrow_without_symbol_mapping_falls_through(self):
+        # emit_operator declines (returns False) when the profile lacks the
+        # arrow cells, leaving the <mo> to the ordinary operator path.
+        import xml.etree.ElementTree as ET
+
+        from brailix.backend.math import MathBrailleContext
+        from brailix.backend.math.chem import emit_operator
+
+        wc = WarningCollector(mode=RunMode.NORMAL)
+        ctx = BackendContext(profile="cn_current", warnings=wc)
+        mctx = MathBrailleContext(profile=_EmptySymbolProfile(), backend=ctx)
+        elem = ET.Element("mo")
+        elem.text = "↑"
+        cells = []
+        assert emit_operator(cells, mctx, elem) is False
+        assert cells == []
+
+    def test_charge_sign_without_mapping_warns(self):
+        from brailix.backend.math import MathBrailleContext
+        from brailix.backend.math.chem import _emit_sign_cells
+
+        wc = WarningCollector(mode=RunMode.NORMAL)
+        ctx = BackendContext(profile="cn_current", warnings=wc)
+        mctx = MathBrailleContext(profile=_EmptySymbolProfile(), backend=ctx)
+        cells = []
+        _emit_sign_cells(cells, mctx, "+")
+        hits = wc.by_code("MATH_UNKNOWN_SYMBOL")
+        assert len(hits) == 1 and "charge sign" in hits[0].message
+        assert len(cells) == 1
+        assert cells[0].role == "unknown" and cells[0].dots == ()
+
+
+# ---------------------------------------------------------------------------
+# Full-width digits are a writing error in every digit position
+# ---------------------------------------------------------------------------
+
+
+class TestFullWidthDigitIsWritingError:
+    """A full-width digit inside a formula is a source writing error —
+    the author meant the half-width digit and should fix the source. No
+    digit position may silently fold it: each warns MATH_UNKNOWN_DIGIT
+    and emits a blank unknown cell, exactly like full-width letters and
+    operators are flagged rather than normalised."""
+
+    def _assert_flagged(self, full_cells, full_wc, plain_cells):
+        assert dots(full_cells) != dots(plain_cells)
+        assert any(c.role == "unknown" and c.dots == () for c in full_cells)
+        assert full_wc.by_code("MATH_UNKNOWN_DIGIT")
+
+    def test_fullwidth_subscript_is_flagged(self, profile):
+        full, wc = ce_cells("H２O", profile)
+        plain, _ = ce_cells("H2O", profile)
+        self._assert_flagged(full, wc, plain)
+
+    def test_fullwidth_charge_magnitude_is_flagged(self, profile):
+        full, wc = ce_cells("O^２-", profile)
+        plain, _ = ce_cells("O^2-", profile)
+        self._assert_flagged(full, wc, plain)
+
+    def test_fullwidth_coefficient_is_flagged(self, profile):
+        # The coefficient path used to be the lone exception: it folded
+        # ２H2O to 2H2O silently via the shared digit emitter.
+        full, wc = ce_cells("２H2O", profile)
+        plain, _ = ce_cells("2H2O", profile)
+        self._assert_flagged(full, wc, plain)

@@ -317,3 +317,268 @@ class TestTokenClassification:
     def test_greek_pi_classified_as_identifier(self):
         out = _mathml("\\f(π,2)")
         assert "<mi>π</mi>" in out
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: input forms, soft failures, option fallbacks, degenerate shapes
+# ---------------------------------------------------------------------------
+
+
+class TestBytesInput:
+    """The docx layer may hand over raw bytes; both decode outcomes
+    must stay inside the adapter's soft-fail contract."""
+
+    def test_utf8_bytes_are_decoded(self):
+        out = EqFieldMathSourceAdapter().to_mathml(b"eq \\f(1,2)")
+        assert "<mfrac>" in out
+        assert "<mn>1</mn>" in out
+        assert "<mn>2</mn>" in out
+
+    def test_non_utf8_bytes_yield_merror(self):
+        out = EqFieldMathSourceAdapter().to_mathml(b"\xff\xfe")
+        assert "<merror" in out
+        assert 'data-reason="non-utf8 bytes"' in out
+
+
+class TestSoftFailure:
+    def test_parse_phase_exception_yields_merror(self):
+        # U+00B2 SUPERSCRIPT TWO passes str.isdigit() but int() rejects
+        # it, so the point-size reader raises mid-parse. The adapter
+        # must trap that and degrade to <merror> instead of raising.
+        out = _mathml("\\s\\up²(x)")
+        assert "<merror" in out
+        assert "eq convert error" in out
+
+
+class TestTokenizerEdges:
+    def test_trailing_backslash_is_literal_text(self):
+        # A field truncated right after a backslash.
+        out = _mathml("x\\")
+        assert "<mi>x</mi>" in out
+        assert "<mo>\\</mo>" in out
+
+    def test_semicolon_separates_arguments(self):
+        # Word locales that use comma as the decimal separator emit
+        # ``;`` between EQ arguments instead.
+        out = _mathml("\\f(1;2)")
+        assert "<mfrac>" in out
+        assert "<mn>1</mn>" in out
+        assert "<mn>2</mn>" in out
+
+
+class TestBracketCharFallbacks:
+    """``\\lc``/``\\rc``/``\\bc`` normally escape their bracket char
+    (``\\lc\\{``); the reader also tolerates sloppier real-world forms."""
+
+    def test_unescaped_bracket_char_is_accepted(self):
+        # ``\b\lc{`` typo — bare char instead of ``\lc\{``.
+        out = _mathml("\\b\\lc{(x)")
+        assert '<mo fence="true">{</mo>' in out
+        assert '<mo fence="true">}</mo>' not in out
+        assert "<mi>x</mi>" in out
+
+    def test_punctuation_as_bracket_char(self):
+        # ``\lc(`` — the next token is a paren; taken literally.
+        out = _mathml("\\b\\lc((x))")
+        assert '<mo fence="true">(</mo>' in out
+        assert out.count('fence="true"') == 1
+        assert "<mi>x</mi>" in out
+        # The closer that paired with the consumed paren survives as
+        # plain text rather than vanishing.
+        assert "<mo>)</mo>" in out
+
+    def test_switch_after_lc_yields_empty_bracket_char(self):
+        # ``\lc`` immediately followed by ``\rc`` — no left character.
+        out = _mathml("\\b\\lc\\rc\\](x)")
+        assert '<mo fence="true">]</mo>' in out
+        assert out.count('fence="true"') == 1
+
+    def test_lc_at_end_of_input(self):
+        # Truncated field: nothing after ``\lc``.
+        out = _mathml("\\b\\lc")
+        root = _root(out)
+        assert _local(root.tag) == "math"
+        assert "<mo" not in out
+
+
+class TestSwitchWithoutArgumentList:
+    def test_unknown_switch_without_parens(self):
+        # A stray LaTeX-ism pasted into an EQ field: placeholder text,
+        # following content kept.
+        out = _mathml("\\alpha x")
+        assert "<mtext>\\alpha</mtext>" in out
+        assert "<mi>x</mi>" in out
+
+    def test_radical_without_parens(self):
+        out = _mathml("\\r x")
+        assert "<msqrt>" in out
+        assert "<mi>x</mi>" in out
+
+    def test_unclosed_argument_list(self):
+        # Truncated field: EOF inside the arg list is treated as ``)``.
+        out = _mathml("\\f(1,2")
+        assert "<mfrac>" in out
+        assert "<mn>1</mn>" in out
+        assert "<mn>2</mn>" in out
+
+
+class TestScriptOptions:
+    def test_up_without_point_size(self):
+        # ``\up`` with the point count omitted still means superscript.
+        out = _mathml("\\s\\up(2)")
+        assert "<msup>" in out
+        assert "<mn>2</mn>" in out
+
+    def test_ai_option_is_consumed(self):
+        # ``\ai`` tweaks line spacing only; kind stays the default.
+        out = _mathml("\\s\\ai(x)")
+        assert "<msup>" in out
+        assert "<mi>x</mi>" in out
+
+    def test_ai_with_point_count_keeps_argument_list(self):
+        # Word's documented form carries a point count (``\ai6``). The
+        # count must be consumed with the switch, or the digits split
+        # the option scan from the argument list and the script content
+        # leaks outside the script.
+        out = _mathml("\\s\\ai6(x)")
+        assert "<msup>" in out
+        assert "<mi>x</mi>" in out
+        assert "<mn>6</mn>" not in out
+
+
+class TestIntegralOptions:
+    def test_inline_option_keeps_integral_layout(self):
+        out = _mathml("\\i\\in(0,1,x)")
+        assert "∫" in out
+        assert "<msubsup>" in out
+
+    def test_fc_at_end_of_input_keeps_default_operator(self):
+        # Truncated field: ``\fc`` with no character following.
+        out = _mathml("\\i\\fc")
+        assert "<mo>∫</mo>" in out
+
+
+class TestIntegralLimits:
+    def test_no_limits_emits_bare_operator(self):
+        # Indefinite integral: both limit slots empty.
+        out = _mathml("\\i(,,x)")
+        assert "<mo>∫</mo>" in out
+        assert "<msubsup>" not in out
+        assert "<msub>" not in out
+        assert "<msup>" not in out
+
+    def test_upper_limit_only_integral(self):
+        out = _mathml("\\i(,1,x)")
+        assert "<msup>" in out
+        assert "<mn>1</mn>" in out
+
+    def test_upper_limit_only_summation(self):
+        out = _mathml("\\i\\su(,n,k)")
+        assert "∑" in out
+        assert "<mover>" in out
+
+
+class TestBoxSides:
+    def test_left_only(self):
+        out = _mathml("\\x\\le(x)")
+        assert 'notation="left"' in out
+
+    def test_right_only(self):
+        out = _mathml("\\x\\ri(x)")
+        assert 'notation="right"' in out
+
+    def test_all_four_sides_collapse_to_box(self):
+        out = _mathml("\\x\\to\\bo\\le\\ri(x)")
+        assert 'notation="box"' in out
+
+
+class TestOverstrikeOptions:
+    def test_alignment_options_are_consumed(self):
+        for opt in ("al", "ac", "ar"):
+            out = _mathml(f"\\o\\{opt}(x,y)")
+            assert "<mover" in out
+            assert "<mi>x</mi>" in out
+            assert "<mi>y</mi>" in out
+
+
+class TestOverstrikeShapes:
+    def test_empty_overstrike_emits_empty_row(self):
+        out = _mathml("\\o()")
+        root = _root(out)
+        children = list(root)
+        assert len(children) == 1
+        assert _local(children[0].tag) == "mrow"
+        assert len(list(children[0])) == 0
+
+    def test_three_items_stack_two_movers(self):
+        out = _mathml("\\o(x,y,z)")
+        assert out.count("<mover") == 2
+        for ch in ("x", "y", "z"):
+            assert f"<mi>{ch}</mi>" in out
+
+
+class TestDisplaceOptions:
+    def test_li_option_is_consumed_without_output(self):
+        # ``\li`` draws a rule to the margin — visual-only, nothing to
+        # say in MathML.
+        out = _mathml("a\\d\\li b")
+        assert "<mspace" not in out
+        assert "<mi>a</mi>" in out
+        assert "<mi>b</mi>" in out
+
+
+class TestListShapes:
+    def test_single_item_needs_no_mrow(self):
+        out = _mathml("\\l(x)")
+        assert "<mi>x</mi>" in out
+        assert "<mrow" not in out
+
+
+class TestArrayOptions:
+    def test_zero_column_count_is_ignored(self):
+        # ``\co0`` is nonsense; fall back to the 1-column default.
+        out = _mathml("\\a\\co0(a,b)")
+        assert out.count("<mtr>") == 2
+
+
+class TestOptionScanStopsAtNextSwitch:
+    """A switch directly followed by another switch (no argument list)
+    must end its option scan and let the next construct parse as a
+    sibling instead of being swallowed."""
+
+    def test_displace_then_fraction(self):
+        # Realistic: padding inserted right before a fraction.
+        out = _mathml("a\\d\\fo10\\f(1,2)")
+        assert 'mspace width="10pt"' in out
+        assert "<mfrac>" in out
+
+    def test_brackets_then_fraction(self):
+        out = _mathml("\\b\\f(1,2)")
+        assert '<mo fence="true">(</mo>' in out
+        assert '<mo fence="true">)</mo>' in out
+        assert "<mfrac>" in out
+
+    def test_array_then_fraction(self):
+        out = _mathml("\\a\\co2\\f(a,b)")
+        assert "<mtable" in out
+        assert "<mfrac>" in out
+
+    def test_integral_then_fraction(self):
+        out = _mathml("\\i\\f(1,2)")
+        assert "<mo>∫</mo>" in out
+        assert "<mfrac>" in out
+
+    def test_script_then_fraction(self):
+        out = _mathml("\\s\\f(1,2)")
+        assert "<msup>" in out
+        assert "<mfrac>" in out
+
+    def test_box_then_fraction(self):
+        out = _mathml("\\x\\f(1,2)")
+        assert 'notation="box"' in out
+        assert "<mfrac>" in out
+
+    def test_overstrike_then_fraction(self):
+        out = _mathml("\\o\\f(1,2)")
+        assert "<mover" not in out
+        assert "<mfrac>" in out

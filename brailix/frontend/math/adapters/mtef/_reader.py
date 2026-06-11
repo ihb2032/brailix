@@ -76,10 +76,6 @@ class _Reader:
         self.pos += 1
         return b
 
-    def i8_biased(self) -> int:
-        """One byte biased by +128 (used for typeface, dx, dy in nudges)."""
-        return self.u8() - 128
-
     def u16(self) -> int:
         if self.pos + 2 > len(self.data):
             raise _MtefParseError("unexpected end of MTEF data (u16)")

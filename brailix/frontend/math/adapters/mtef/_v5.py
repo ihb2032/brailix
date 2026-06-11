@@ -438,11 +438,3 @@ def _consume_ruler_v5(r: _Reader) -> None:
     if r.remaining() > 0 and r.peek() == _REC_RULER:
         r.u8()  # consume RULER tag
     _skip_ruler(r)
-
-
-def _expect(r: _Reader, rec: int) -> None:
-    actual = r.u8()
-    if actual != rec:
-        raise _MtefParseError(
-            f"expected record 0x{rec:02x}, got 0x{actual:02x}"
-        )
