@@ -219,6 +219,31 @@ class TestTable:
         assert isinstance(doc.blocks[0], Table)
         assert isinstance(doc.blocks[1], Paragraph)
 
+    def test_separator_only_line_does_not_crash(self):
+        # Regression: a lone separator row yields no body rows. The table
+        # consumer used to advance the cursor and then return None,
+        # stranding it past EOF and crashing span_of with IndexError.
+        # Now it leaves the cursor untouched and the line falls through to
+        # a paragraph carrying the literal text.
+        doc = parse_markdown("| --- |")
+        assert len(doc.blocks) == 1
+        assert isinstance(doc.blocks[0], Paragraph)
+        assert doc.blocks[0].text == "| --- |"
+
+    def test_separator_only_at_eof_after_paragraph(self):
+        doc = parse_markdown("para\n\n| --- |")
+        assert [type(b).__name__ for b in doc.blocks] == ["Paragraph", "Paragraph"]
+        assert doc.blocks[1].text == "| --- |"
+
+    def test_separator_only_then_content_no_ghost_paragraph(self):
+        # The separator falls through to a paragraph; the real content
+        # that follows is its own block. No empty Paragraph is injected.
+        doc = parse_markdown("| --- |\n\nhello")
+        assert [type(b).__name__ for b in doc.blocks] == ["Paragraph", "Paragraph"]
+        assert doc.blocks[0].text == "| --- |"
+        assert doc.blocks[1].text == "hello"
+        assert all(b.text for b in doc.blocks)  # no ghost empty paragraph
+
 
 class TestMixedDocument:
     def test_kitchen_sink(self):

@@ -413,16 +413,25 @@ def _consume_table(cur: _LineCursor) -> Table | None:
     detected and dropped — V1 doesn't model header semantics, but
     skipping the separator avoids it landing in the output as a row
     of dashes.
+
+    Cursor contract: this scans ahead without consuming and only
+    advances the cursor when it returns a real :class:`Table`. A run
+    that yields no body rows (e.g. a lone ``| --- |`` separator) returns
+    None with the cursor untouched, so the caller re-routes those lines
+    to :func:`_consume_paragraph`. Consuming first and then returning
+    None stranded the cursor past EOF and crashed ``span_of`` on the
+    out-of-range line index.
     """
     start = cur.i
     rows: list[TableRow] = []
     consumed: list[str] = []
-    while cur.i < len(cur.lines):
-        line = cur.peek()
-        if line is None or not _TABLE_RE.match(line):
+    end = cur.i
+    while end < len(cur.lines):
+        line = cur.lines[end]
+        if not _TABLE_RE.match(line):
             break
         consumed.append(line)
-        cur.consume()
+        end += 1
     if len(consumed) < 1:
         return None
     for line in consumed:
@@ -441,6 +450,7 @@ def _consume_table(cur: _LineCursor) -> Table | None:
         rows.append(TableRow(cells=cells))
     if not rows:
         return None
+    cur.i = end  # commit the consumption now that it is a real table
     return Table(rows=rows, span=cur.span_of(start, cur.i))
 
 
