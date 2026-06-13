@@ -142,6 +142,34 @@ class TestConvertCe:
         # — same MathML, so the same braille downstream.
         assert convert_ce("2H2+O2=2H2O") == convert_ce("2H2 + O2 = 2H2O")
 
+    def test_spaceless_group_reactant_matches_spaced(self):
+        # A reactant that starts with a parenthesised group ((NH4)2SO4) or a
+        # bracketed complex ion ([Fe(CN)6]) is still a species, so the + in
+        # front of it is the addition operator — the spaceless form must
+        # equal the spaced one. Regression: + before ( / [ used to be misread
+        # as a trailing charge, so H2+(NH4)2SO4 parsed unlike H2 + (NH4)2SO4.
+        assert convert_ce("H2+(NH4)2SO4") == convert_ce("H2 + (NH4)2SO4")
+        assert convert_ce("K3+[Fe(CN)6]") == convert_ce("K3 + [Fe(CN)6]")
+
+    def test_full_double_decomposition_equation_yields_not_double_bond(self):
+        # The review's spaceless equation: the = is the yields connector
+        # (formula has an addition + before a (group) reactant, no arrow),
+        # not a structural double bond. Must parse without <merror>.
+        out = convert_ce("BaCl2+(NH4)2SO4=BaSO4 v +2NH4Cl")
+        assert _merror(out) is None
+        assert out == convert_ce("BaCl2 + (NH4)2SO4 = BaSO4 v + 2NH4Cl")
+
+    def test_charge_before_state_label_stays_a_charge(self):
+        # Na+(s): the + is a unit charge and (s) a physical-state label, NOT
+        # an addition operator before a "(s)" species. The state-label
+        # exception keeps the group-reactant fix from reversing real charges.
+        out = convert_ce("Na+(s)")
+        assert _merror(out) is None
+        root = ET.fromstring(out)
+        assert root.find(f"{_NS}msup") is not None  # Na charged
+        state = root[-1]                              # trailing (s) label
+        assert state.find(f"{_NS}mtext").get("data-bk-chem-state") == "1"
+
     @pytest.mark.parametrize("inner", ["Na+", "H+", "Cl-"])
     def test_trailing_charge_becomes_msup(self, inner):
         # A +/- that ENDS a species — nothing (or a space then a connector)

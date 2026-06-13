@@ -177,13 +177,19 @@ def _match_arrow(inner: str, i: int) -> tuple[str, int] | None:
 
 def _species_follows(inner: str, i: int) -> bool:
     """True when a new species begins at/after ``i`` (skipping spaces): a
-    coefficient digit or an uppercase element letter.
+    coefficient digit, an uppercase element letter, a parenthesised group
+    (``(NH4)2SO4``) or a bracketed complex ion (``[Fe(CN)6]``).
 
     This is what separates an addition ``+`` from a trailing charge ``+``.
-    In ``2H2+O2`` / ``H2 + O2`` the ``+`` is followed by the next reactant,
-    so it joins two species (addition). In ``Na+`` / ``H+`` the ``+`` ends a
-    species — nothing, or a space then a connector, follows — so it's a
-    charge (handled in the element branch as an ``<msup>``)."""
+    In ``2H2+O2`` / ``H2 + O2`` / ``H2+(NH4)2SO4`` the ``+`` is followed by
+    the next reactant, so it joins two species (addition). In ``Na+`` /
+    ``H+`` the ``+`` ends a species — nothing, or a space then a connector,
+    follows — so it's a charge (handled in the element branch as an
+    ``<msup>``).
+
+    The one ``(``-led exception is a physical-state label
+    (``(s)`` / ``(l)`` / ``(g)`` / ``(aq)``): ``Na+(s)`` is a charge then a
+    state, not a new species, so the ``+`` stays a charge there."""
     n = len(inner)
     j = i
     while j < n and inner[j].isspace():
@@ -191,7 +197,25 @@ def _species_follows(inner: str, i: int) -> bool:
     if j >= n:
         return False
     ch = inner[j]
-    return ch.isdigit() or "A" <= ch <= "Z"
+    if ch.isdigit() or "A" <= ch <= "Z" or ch == "[":
+        return True
+    if ch == "(":
+        return not _opens_state_label(inner, j)
+    return False
+
+
+def _opens_state_label(inner: str, j: int) -> bool:
+    """Whether the ``(`` at ``j`` opens a physical-state label
+    (``(s)`` / ``(l)`` / ``(g)`` / ``(aq)``) rather than a chemical group.
+
+    A state label is always a flat ``(token)`` with no nesting, so the
+    first ``)`` after ``j`` closes it — a plain :meth:`str.find` is enough
+    here, and a genuine group like ``(NH4)`` simply has non-state content
+    so it returns False (the ``+`` before it is an addition operator)."""
+    k = inner.find(")", j)
+    if k == -1:
+        return False
+    return inner[j + 1 : k].strip() in _STATE_TOKENS
 
 
 # Condition strings that mean "heat" — rendered as the inline heat symbol
@@ -311,22 +335,19 @@ def _equals_is_yields(inner: str) -> bool:
     * An explicit mhchem arrow (``->`` / ``<-`` / ``<=>``) **is** the yields,
       so every ``=`` is a double bond — even inside a reactant, as in the
       addition reaction ``CH2=CH2 + H2 -> CH3CH3``.
-    * Otherwise, an addition ``+`` (one followed by a new species — a digit or
-      uppercase element letter, so a trailing charge ``Na+`` doesn't count)
-      means the formula is an equation written with ``=`` as its arrow
-      (``2H2+O2=2H2O``, even spaceless), so the ``=`` is the yields.
+    * Otherwise, an addition ``+`` (one followed by a new species, so a
+      trailing charge ``Na+`` / a charge-then-state ``Na+(s)`` doesn't
+      count) means the formula is an equation written with ``=`` as its
+      arrow (``2H2+O2=2H2O`` / ``BaCl2+(NH4)2SO4=…``, even spaceless), so
+      the ``=`` is the yields.
     * A lone molecule (no arrow, no addition ``+`` — ``O=C=O`` / ``CH2=CH2``)
       reads ``=`` as a double bond.
     """
     if any(a in inner for a in ("->", "<-", "<=>")):
         return False
-    for m in re.finditer(r"\+", inner):
-        j = m.end()
-        while j < len(inner) and inner[j].isspace():
-            j += 1
-        if j < len(inner) and (inner[j].isdigit() or "A" <= inner[j] <= "Z"):
-            return True
-    return False
+    # Reuse the species/charge discriminator so a group- or bracket-led
+    # reactant (``+(NH4)2SO4`` / ``+[Fe(CN)6]``) counts as addition too.
+    return any(_species_follows(inner, m.end()) for m in re.finditer(r"\+", inner))
 
 
 def _soft_unknown_mathml(ch: str) -> str:
