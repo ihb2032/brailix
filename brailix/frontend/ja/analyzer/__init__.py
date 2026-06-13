@@ -129,6 +129,14 @@ def _is_intraword_kana_continuation(
         return False
     if prev.span.end != token.span.start:
         return False
+    # A 付属語 (助詞 / 助動詞) never fragments the following content word —
+    # it closes its own 文節. Over-segmentation (ワタ → ワタ + シ) only
+    # happens *inside* one 自立語, where both halves share a content POS.
+    # Without this gate a particle followed by an all-kana content word
+    # (は + パン, は + ペン) looked "contiguous and all-kana" and lost its
+    # 文節-boundary space, so 私はパンを買う / これはペンです under-spaced.
+    if prev.pos and prev.pos.split(",")[0] in _DEPENDENT_POS:
+        return False
     return _is_all_kana(prev.surface) and _is_all_kana(token.surface)
 
 
