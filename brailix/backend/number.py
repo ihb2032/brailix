@@ -173,6 +173,11 @@ def translate_date(node: Date, ctx: BackendContext, profile: BrailleProfile) -> 
     read as "170"). 年 is the lone exception: the NCB convention writes
     a year number directly against 年 with no joiner; 月/日/号/时/分/秒
     all take the connector.
+
+    The year / month / day **components** are space-separated, though:
+    ``2026年 5月 17日``, not ``2026年5月17日``. The connector binds a number
+    to its marker *within* a component; a word-boundary blank goes
+    *between* components, i.e. before a Number that follows a marker.
     """
     from brailix.backend import zh as zh_backend  # local import to avoid cycle
     from brailix.ir.inline import HanziChar
@@ -181,6 +186,12 @@ def translate_date(node: Date, ctx: BackendContext, profile: BrailleProfile) -> 
     prev: InlineNode | None = None
     for part in node.parts:
         if isinstance(part, Number):
+            if isinstance(prev, HanziMarker):
+                # A space separates date components: 年 / 5月 / 17日 are
+                # distinct written units, so the number that starts the
+                # next component takes a word-boundary blank after the
+                # previous marker (年 5月 17日, not 年5月17日).
+                out.append(_component_space_cell(part.span))
             out.extend(_digits_to_cells(part.surface, part.span, ctx, profile))
         elif isinstance(part, HanziMarker):
             if isinstance(prev, Number) and part.surface != _DATE_CONNECTOR_EXEMPT:
@@ -264,6 +275,17 @@ def _connector_cell(span: Span | None, profile: BrailleProfile) -> BrailleCell:
         source_span=boundary,
         source_text="",
     )
+
+
+def _component_space_cell(span: Span | None) -> BrailleCell:
+    """One blank cell separating two date components (年 / 5月 / 17日).
+
+    A word-boundary space, emitted straight from :func:`translate_date`
+    (a Date bundles its parts rather than separating them with IR
+    nodes). The span collapses to the boundary point so the synthetic
+    cell never overlaps real source positions."""
+    boundary = Span(span.start, span.start) if span else None
+    return BrailleCell(dots=(), role="space", source_span=boundary, source_text="")
 
 
 def _unknown_cell(

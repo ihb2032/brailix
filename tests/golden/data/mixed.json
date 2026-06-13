@@ -42,8 +42,8 @@
       "cases": [
         {
           "src": "我有3个苹果",
-          "expected": "⠕⠄⠀⠳⠄⠼⠉⠤⠛⠢⠆⠀⠏⠡⠂⠛⠕⠄",
-          "note": "Chinese + digit + measure word + noun; hyphen/connector ⠤ between 3个 (个's leading cell ⠛=7), no separator between 有→3 (the number sign supplies it)"
+          "expected": "⠕⠄⠀⠳⠄⠀⠼⠉⠤⠛⠢⠆⠀⠏⠡⠂⠛⠕⠄",
+          "note": "Chinese + digit + measure word + noun; a number is its own word, so 有→3 takes a word-boundary space (every hanzi but the ordinal prefix 第 does); the hyphen/connector ⠤ binds 3个 (个's leading cell ⠛=7)"
         }
       ]
     },

@@ -72,6 +72,26 @@ class TestCharacterClasses:
         assert _types(s) == ["hanzi_text"]
         assert _surfaces(s) == ["张𠀀华"]
 
+    def test_ideographic_number_zero_is_hanzi(self):
+        # 〇 (U+3007) reads líng and must route through the Chinese
+        # frontend, not fall to punct → UNKNOWN_PUNCT + blank cell.
+        s = _segs("〇")
+        assert _types(s) == ["hanzi_text"]
+
+    def test_ideographic_zero_keeps_year_run_intact(self):
+        # 二〇二六年 must stay a single hanzi run; a misclassified 〇 would
+        # split it into 二 / punct / 二六年 and drop the líng syllable.
+        s = _segs("二〇二六年")
+        assert _types(s) == ["hanzi_text"]
+        assert _surfaces(s) == ["二〇二六年"]
+
+    def test_iteration_marks_stay_punct(self):
+        # 々 (U+3005) / 〆 (U+3006) are deliberately NOT hanzi: they carry
+        # no standalone reading. Pinning the current behavior so a future
+        # change to _is_hanzi is a conscious one.
+        assert _types(_segs("々")) == ["punct"]
+        assert _types(_segs("〆")) == ["punct"]
+
     def test_single_greek_letter(self):
         s = _segs("测量τ值")
         assert _types(s) == ["hanzi_text", "greek_text", "hanzi_text"]

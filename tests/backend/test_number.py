@@ -316,8 +316,8 @@ class TestTranslateDate:
         )
         cells = translate_date(node, ctx, profile)
         # 3 number_sign + (4+1+2) digits + 3 marker syllables. 月/日 each
-        # take a connector (digit-to-hanzi joiner); 年 is the lone exception
-        # → 2 connector cells, before 月 and 日 only.
+        # take a connector (digit-to-hanzi joiner) within their component;
+        # 年 is the lone exception → 2 connector cells, before 月 and 日 only.
         num_signs = [c for c in cells if c.role == "number_sign"]
         digits = [c for c in cells if c.role == "digit"]
         connectors = [c for c in cells if c.role == "connector"]
@@ -325,6 +325,13 @@ class TestTranslateDate:
         assert len(digits) == 7  # 4 + 1 + 2
         assert len(connectors) == 2  # before 月 and 日, not 年
         assert all(c.dots == profile.connector for c in connectors)
+        # The three components (2026年 / 5月 / 17日) are space-separated: a
+        # word-boundary blank precedes the 2nd and 3rd components' numbers.
+        spaces = [c for c in cells if c.role == "space"]
+        assert len(spaces) == 2
+        sign_idx = [i for i, c in enumerate(cells) if c.role == "number_sign"]
+        for i in sign_idx[1:]:  # 5 and 17 each follow a component space
+            assert cells[i - 1].role == "space"
 
     def test_year_only(self, ctx, profile):
         # Frontend Normalizer is responsible for filling in pinyin on

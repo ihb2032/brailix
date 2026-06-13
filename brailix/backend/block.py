@@ -285,9 +285,19 @@ def _footnote_ref_cells(ref: str, profile: BrailleProfile) -> list[BrailleCell]:
     # letter); scanning "any number_sign already in cells" deduped too broadly.
     prev_was_digit = False
     for ch in ref:
-        bare = profile.bare_letter(ch)
-        if bare is not None:
-            cells.append(BrailleCell(dots=bare, role="footnote_ref", source_text=ch))
+        letter = profile.letter(ch)
+        if letter is not None:
+            # Use the letter-sign-prefixed form, not the bare cell: in
+            # cn_current bare_letter("a") == the digit "1" cell, so a ref
+            # like "1a" kept the number latch and read "a" as another "1"
+            # ("11"). The letter prefix (⠰ / ⠠ …) both disambiguates the
+            # letter from a digit and breaks the number run. (The prefix
+            # repeats per letter here; footnote refs are short — sharing
+            # one sign across a multi-letter run is a later refinement.)
+            cells.extend(
+                BrailleCell(dots=dots, role="footnote_ref", source_text=ch)
+                for dots in letter
+            )
             prev_was_digit = False
             continue
         punct = profile.punctuation.get(ch)
