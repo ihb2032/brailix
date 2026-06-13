@@ -44,6 +44,40 @@ class TestMidiAdapter:
         assert adapter.source == "midi"
 
     @pytest.mark.skipif(
+        not (_has("partitura") and _has("mido")),
+        reason="partitura/mido not installed — pip install brailix[midi]",
+    )
+    def test_midi_converts_to_musicxml_with_notes(self):
+        # Functional smoke: a real (tiny) MIDI must convert into a
+        # normalised <score-partwise> tree carrying notes. This guards
+        # the partitura entry point — load_score() takes a *filename*,
+        # not our in-memory buffer, so the old load_score(BytesIO) call
+        # failed for every input and silently produced a music-error.
+        # registry.get() succeeding (above) never exercised conversion.
+        import io
+
+        import mido
+
+        mf = mido.MidiFile()
+        track = mido.MidiTrack()
+        mf.tracks.append(track)
+        track.append(mido.MetaMessage("set_tempo", tempo=500000, time=0))
+        track.append(mido.Message("note_on", note=60, velocity=80, time=0))
+        track.append(mido.Message("note_off", note=60, velocity=0, time=480))
+        track.append(mido.MetaMessage("end_of_track", time=0))
+        buf = io.BytesIO()
+        mf.save(file=buf)
+
+        ctx = MusicContext(source="midi")
+        tree = parse_music_tree(buf.getvalue(), ctx)
+        assert tree is not None
+        assert tree.tag == "score-partwise"
+        assert tree.findall(".//note")  # at least one note survived
+        assert not any(
+            w.code.startswith("MUSIC_") for w in ctx.warnings.warnings
+        )
+
+    @pytest.mark.skipif(
         _has("partitura"),
         reason="partitura is installed — can't test missing-extra path",
     )
@@ -66,6 +100,25 @@ class TestAbcAdapter:
     def test_abc_with_converter(self):
         adapter = music_source_registry.get("abc")
         assert adapter.source == "abc"
+
+    @pytest.mark.skipif(
+        not _has("abc_xml_converter"),
+        reason="abc-xml-converter not installed — pip install brailix[abc]",
+    )
+    def test_abc_converts_to_musicxml_with_notes(self):
+        # Functional smoke: a 4-note ABC tune must convert into a
+        # normalised <score-partwise> tree with 4 notes. Guards the
+        # convert_abc2xml entry point — the old code probed an internal
+        # 4-arg helper (abc2xml.convert), called it with one arg, hit
+        # TypeError, and silently produced a music-error for every tune.
+        ctx = MusicContext(source="abc")
+        tree = parse_music_tree("X:1\nT:probe\nM:4/4\nL:1/4\nK:C\nCDEF|\n", ctx)
+        assert tree is not None
+        assert tree.tag == "score-partwise"
+        assert len(tree.findall(".//note")) == 4
+        assert not any(
+            w.code.startswith("MUSIC_") for w in ctx.warnings.warnings
+        )
 
     @pytest.mark.skipif(
         _has("abc_xml_converter"),

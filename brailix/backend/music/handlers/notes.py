@@ -569,11 +569,22 @@ def _emit_rest(
     """Emit the BANA rest cell for the note's ``<type>`` plus any
     dotted-value cells.
 
+    A full-measure rest (``<rest measure="yes"/>``) is written with a
+    whole rest whatever the time signature (BANA Par. 5.1). Exporters
+    emit it without a ``<type>``, so it must be special-cased — otherwise
+    it defaulted to ``"quarter"`` and produced a quarter rest in every
+    non-4/4 measure.
+
     Rests do **not** mutate ``mctx.prev_pitch`` — BANA Par. 3.2.2
     speaks of "consecutive notes", so a rest between two notes
     doesn't reset the octave reference.
     """
-    type_name = first_child_text(elem, "type") or "quarter"
+    rest_el = elem.find("rest")
+    if rest_el is not None and rest_el.get("measure") == "yes":
+        # measure="yes" lives on the <rest> child, not the <note>.
+        type_name = "whole"
+    else:
+        type_name = first_child_text(elem, "type") or "quarter"
     # BANA Par. 2.4: a rest carries a value sign on a category change too
     # (rests share the note value shapes), before the rest cell.
     _emit_value_sign(cells, mctx, type_name)

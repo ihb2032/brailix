@@ -13,6 +13,7 @@ placeholder per the music subsystem's soft-failure contract.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 from brailix.core.context import MusicContext
@@ -41,11 +42,7 @@ class AbcSourceAdapter:
         if not text:
             return music_error_wrap("", reason="empty abc payload")
         try:
-            # abc_xml_converter's public API has shifted across versions,
-            # so we don't pin a specific callable: import the ``abc2xml``
-            # module and probe it for a ``convert`` / ``abc_to_xml``
-            # entry point below.
-            from abc_xml_converter import abc2xml  # noqa: WPS433
+            from abc_xml_converter import abc2xml  # noqa: WPS433 — lazy
         except ImportError:
             return music_error_wrap(
                 text,
@@ -54,22 +51,38 @@ class AbcSourceAdapter:
                     "(pip install brailix[abc])"
                 ),
             )
+        # Use the library-level ``getXmlScores(abc_text) -> list[str]``,
+        # NOT the top-level ``convert_abc2xml``: that entry calls
+        # ``optparse.parse_args()`` internally to fill options we don't
+        # pass, which reads ``sys.argv`` — so under any real launch whose
+        # argv carries flags (the ``brailix`` CLI, a test runner, an
+        # embedding host application) it hits an unknown option and
+        # ``SystemExit(2)``s.
+        # ``getXmlScores`` takes the ABC text directly and is argv-free.
+        # (The earlier ``abc2xml.convert`` we probed writes to a file and
+        # returns None, and the original ``getattr(abc2xml, "convert")``
+        # bound that internal 4-arg helper and TypeError'd on one arg, so
+        # this adapter never actually converted anything.) getattr-probe
+        # the name so a future rename degrades to a clear warning.
+        get_scores = getattr(abc2xml, "getXmlScores", None)
+        if get_scores is None:
+            return music_error_wrap(
+                text,
+                reason="abc-xml-converter lacks the getXmlScores API",
+            )
         try:
-            # The packaging exposes a function or module-level
-            # ``convert(text) -> str``; fall back to attribute probing
-            # so we don't pin a specific entry point.
-            convert = getattr(abc2xml, "convert", None) \
-                or getattr(abc2xml, "abc_to_xml", None)
-            if convert is None:
-                return music_error_wrap(
-                    text,
-                    reason=(
-                        "abc-xml-converter lacks expected ``convert`` API"
-                    ),
-                )
-            return convert(text)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                scores = get_scores(text)
         except Exception as e:  # noqa: BLE001 — third-party failures vary
             return music_error_wrap(text, reason=f"abc-xml-converter error: {e}")
+        if not scores:
+            return music_error_wrap(
+                text, reason="abc-xml-converter produced no score"
+            )
+        # One music fragment → one score; a multi-tune ABC file yields its
+        # first tune (the music IR is one score per fragment).
+        return scores[0]
 
 
 def _load() -> AbcSourceAdapter:
