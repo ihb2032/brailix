@@ -361,6 +361,20 @@ class TestFootnoteRefEdges:
         assert twos, "no cell carrying digit '2'"
         assert cells[twos[0] - 1].role == "number_sign"
 
+    def test_letter_after_digit_carries_letter_sign(self, profile):
+        # bare_letter("a") == the digit "1" cell in cn_current, so a ref
+        # like "1a" used to read "a" as a second "1" ("11"): the number
+        # sign latched and the bare letter cell was digit-shaped. The
+        # letter must carry its letter-sign prefix so it's unambiguously
+        # a letter (and the digit run is broken).
+        from brailix.backend.block import _footnote_ref_cells
+
+        cells = _footnote_ref_cells("1a", profile)
+        a_cells = [c for c in cells if c.source_text == "a"]
+        assert len(a_cells) == 2  # letter-sign prefix + the bare letter
+        assert a_cells[-1].dots == profile.bare_letter("a")
+        assert a_cells[0].dots != profile.digits["1"]  # prefix isn't digit-shaped
+
     def test_punctuation_ref_uses_punct_table(self, ctx, profile):
         # A period has no letter / digit mapping but the punctuation
         # table can spell it. The ref cells come out with role

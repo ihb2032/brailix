@@ -94,6 +94,14 @@ def _is_hanzi(ch: str) -> bool:
         "一" <= ch <= "鿿"
         or "㐀" <= ch <= "䶿"  # Extension A
         or "豈" <= ch <= "﫿"  # Compatibility Ideographs
+        # U+3007 ideographic number zero (líng): in the CJK Symbols
+        # block, outside every ideograph range above, but reads as a
+        # numeral in year notation like 二〇二六年. Without this it fell
+        # to punct → UNKNOWN_PUNCT + a blank cell, losing the líng
+        # syllable and splitting the surrounding hanzi run. The
+        # iteration mark 々 (U+3005) and 〆 (U+3006) are left out — they
+        # carry no standalone reading and need separate handling.
+        or ch == "〇"
         # Supplementary planes: rare given names / dictionary
         # characters live here. Missing them dropped such chars to
         # ``unknown`` and a blank cell instead of routing through the

@@ -59,6 +59,30 @@ class TestEntryPoint:
         # it into the tag namespace when parsed back.
         assert 'xmlns="http://www.w3.org/1998/Math/MathML"' in out
 
+    def test_general_field_switches_stripped(self):
+        # Word appends document-field switches (\* MERGEFORMAT inserted by
+        # the field dialog, \! lock-result, \# / \@ pictures) that are not
+        # EQ math. They must be dropped, not leak in as a stray <mi> name
+        # or factorial <mo>. Each form must reduce to the plain fraction.
+        plain = _mathml("eq \\f(1,2)")
+        for tail in (
+            " \\* MERGEFORMAT",
+            "\\* MERGEFORMAT",
+            " \\* Upper",
+            " \\!",
+            ' \\# "0.00"',
+            ' \\@ "M/d/yyyy"',
+        ):
+            out = _mathml(f"eq \\f(1,2){tail}")
+            assert out == plain, tail
+            assert "MERGEFORMAT" not in out and "Upper" not in out
+
+    def test_eq_math_letter_switches_not_stripped(self):
+        # The strip must only hit \* \! \# \@ — the \<letter> math switches
+        # (here \r radical) stay intact.
+        out = _mathml("\\r(2,x)")
+        assert "<mroot>" in out or "<msqrt>" in out
+
 
 class TestFraction:
     def test_simple_fraction(self):

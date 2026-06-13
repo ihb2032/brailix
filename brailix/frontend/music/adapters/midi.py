@@ -2,10 +2,14 @@
 
 The pipeline:
 
-1. ``partitura.load_score`` reads the raw MIDI bytes (from an in-memory
-   ``BytesIO`` buffer) into a ``Score``, handling quantisation, voice
-   splitting and key inference.
-2. ``partitura.save_musicxml`` serialises that ``Score`` back out as
+1. ``mido.MidiFile(file=...)`` parses the raw MIDI bytes from an
+   in-memory ``BytesIO`` buffer into a ``mido.MidiFile`` object.
+2. ``partitura.load_score_midi`` turns that into a ``Score``, handling
+   quantisation, voice splitting and key inference. (``partitura``'s
+   ``load_score`` takes a *filename* — it can't read our in-memory
+   payload, so we hand it the parsed ``mido`` object via
+   ``load_score_midi`` instead.)
+3. ``partitura.save_musicxml`` serialises that ``Score`` back out as
    MusicXML — we stream through an in-memory buffer to avoid temp files.
 
 ``partitura`` is an optional extra. The registry registers this adapter
@@ -17,6 +21,7 @@ with ``extra="midi"``; a missing package surfaces as
 from __future__ import annotations
 
 import io
+import warnings
 from dataclasses import dataclass
 
 from brailix.core.context import MusicContext
@@ -46,20 +51,27 @@ class MidiSourceAdapter:
         if not src:
             return music_error_wrap("", reason="empty midi payload")
         try:
-            import partitura  # noqa: WPS433 — lazy by design
+            import mido  # noqa: WPS433 — lazy by design
+            import partitura  # noqa: WPS433
         except ImportError:
             # Surfaced by the registry as MissingExtraError when the
             # adapter is requested via music_source_registry.get("midi");
             # this defensive branch covers the rare case of a caller
-            # building MidiSourceAdapter directly.
+            # building MidiSourceAdapter directly. (mido ships as a
+            # partitura dependency, so the midi extra pulls both.)
             return music_error_wrap(
                 "",
                 reason="partitura not installed (pip install brailix[midi])",
             )
         try:
-            score = partitura.load_score(io.BytesIO(src))
-            buf = io.BytesIO()
-            partitura.save_musicxml(score, buf)
+            # partitura emits UserWarnings for unsupported MIDI features;
+            # they're noise for a library caller, so scope-suppress them.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                midi = mido.MidiFile(file=io.BytesIO(src))
+                score = partitura.load_score_midi(midi)
+                buf = io.BytesIO()
+                partitura.save_musicxml(score, buf)
             return buf.getvalue().decode("utf-8", errors="replace")
         except Exception as e:  # noqa: BLE001 — third-party failures vary
             return music_error_wrap("", reason=f"partitura error: {e}")

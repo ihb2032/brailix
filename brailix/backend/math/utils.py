@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 from brailix.backend._chars import nonstandard_char_hint
 from brailix.backend.math.context import MathBrailleContext
 from brailix.core.span import Span
-from brailix.ir.braille import BLANK_CELL, BrailleCell
+from brailix.ir.braille import BrailleCell
 
 # Roles that reset ``need_number_sign`` on the next digit run.
 _NUMBER_BREAKING_ROLES: frozenset[str] = frozenset(
@@ -378,7 +378,20 @@ def _is_single_digit_mn(elem: ET.Element | None) -> bool:
 
 
 def _last_is_blank(cells: list[BrailleCell]) -> bool:
-    return bool(cells) and cells[-1].dots == BLANK_CELL.dots
+    """Is the last cell already a separator, so a following operator/
+    connector must not add another blank?
+
+    Judge by *role*, not by ``dots == ()``. BLANK_CELL, LINE_BREAK_CELL,
+    HANG_OPEN_CELL, HANG_CLOSE_CELL and unknown placeholder cells all
+    carry empty dots, so the old ``dots == ()`` test treated every one of
+    them as a blank. That swallowed the required space before a binary
+    operator after a matrix / determinant / equation-system (which ends
+    in HANG_CLOSE_CELL): ``|A| = 5`` lost the blank before ``=``. Only a
+    real space and a line break count as separation here — a line break
+    renders to whitespace so a following blank stays suppressed, but a
+    closed hanging group or an unknown symbol is content the next
+    operator must be spaced away from."""
+    return bool(cells) and cells[-1].role in {"space", "line_break"}
 
 
 # Cell roles that mean "the previous symbol can't be the left operand of a

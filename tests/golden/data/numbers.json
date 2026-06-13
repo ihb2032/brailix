@@ -35,8 +35,8 @@
       "description": "Dates (year/month/day recognized by the normalizer as a Date node)",
       "cases": [
         {"src": "2026年", "expected": "⠼⠃⠚⠃⠋⠝⠩⠂", "note": "year only: digits + 年(nian2); 年 is the sole exception to the hyphen/connector, written directly attached"},
-        {"src": "2026年5月", "expected": "⠼⠃⠚⠃⠋⠝⠩⠂⠼⠑⠤⠾⠆", "note": "年 takes no hyphen/connector, 月 takes the hyphen/connector ⠤ (each digit group re-emits the number sign)"},
-        {"src": "2026年5月17日", "expected": "⠼⠃⠚⠃⠋⠝⠩⠂⠼⠑⠤⠾⠆⠼⠁⠛⠤⠚⠆", "note": "月/日 each take the hyphen/connector, 年 excepted (日's ⠚=0, without separation 17日 reads as 170)"}
+        {"src": "2026年5月", "expected": "⠼⠃⠚⠃⠋⠝⠩⠂⠀⠼⠑⠤⠾⠆", "note": "date components are space-separated (年 / 5月); within a component the number attaches to its marker — 年 directly (no separator), 月 via the hyphen/connector ⠤"},
+        {"src": "2026年5月17日", "expected": "⠼⠃⠚⠃⠋⠝⠩⠂⠀⠼⠑⠤⠾⠆⠀⠼⠁⠛⠤⠚⠆", "note": "year/month/day components are space-separated (2026年 5月 17日); within each, the number attaches to its marker — 年 directly, 月/日 via the hyphen/connector ⠤ (日's ⠚=0, so 17日 needs the ⠤)"}
       ]
     },
     "percent": {

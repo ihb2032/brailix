@@ -111,6 +111,21 @@ class TestWakachigakiRule:
         ]
         assert _kinds(tokens_to_inline(toks)) == ["Word", "Space", "Word"]
 
+    def test_particle_before_all_kana_content_word_keeps_space(self):
+        # Regression: は(助詞) and パン(名詞) are contiguous and both
+        # all-kana, but a 付属語 never fragments the following content
+        # word — パン starts a new 文節 and must take its leading space.
+        # The over-segmentation heuristic used to see "contiguous +
+        # all-kana" and wrongly drop it (私はパンを買う under-spaced).
+        toks = [
+            JapaneseToken("私", "ワタシ", "名詞,代名詞,一般,*", Span(0, 1)),
+            JapaneseToken("は", "ワ", "助詞,係助詞,*,*", Span(1, 2)),
+            JapaneseToken("パン", "パン", "名詞,一般,*,*", Span(2, 4)),
+        ]
+        assert _kinds(tokens_to_inline(toks)) == [
+            "Word", "Word", "Space", "Word"
+        ]
+
 
 class TestWakachigakiJanome:
     def test_bunsetsu_spaces(self):
@@ -138,6 +153,17 @@ class TestWakachigakiJanome:
             "ワタシ ホン"
         )
         assert r.render().count("⠀") == 1
+
+    def test_particle_then_all_kana_noun_is_spaced(self):
+        # Regression end-to-end: パン (katakana) and ペン both come right
+        # after は (助詞). They head their own 文節 and must be spaced off,
+        # even though particle + noun are contiguous all-kana runs.
+        pytest.importorskip("janome")
+        pipe = Pipeline(profile="ja_current", analyzer="janome")
+        # 私 | パンを | 買う -> 2 boundary blanks.
+        assert pipe.translate_text("私はパンを買う").render().count("⠀") == 2
+        # これは | ペンです -> 1 boundary blank.
+        assert pipe.translate_text("これはペンです").render().count("⠀") == 1
 
 
 class TestBoundarySeam:

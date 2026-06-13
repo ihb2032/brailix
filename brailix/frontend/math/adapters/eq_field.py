@@ -30,6 +30,24 @@ from brailix.frontend.math.utils import merror_wrap
 
 _MATHML_NS: str = "http://www.w3.org/1998/Math/MathML"
 
+# Word *general field* switches that can trail an EQ instruction but are
+# document-field formatting, not EQ math syntax: ``\* MERGEFORMAT`` /
+# ``\* CHARFORMAT`` / ``\* Upper`` (the ``\*`` format switch + a keyword,
+# inserted by Word's field dialog by default), ``\!`` (lock result), and
+# the ``\#`` / ``\@`` numeric / date picture switches with a quoted arg.
+# Stripped before tokenizing so they don't leak in as a stray identifier
+# (``MERGEFORMAT`` → <mi>) or operator (``\!`` → factorial <mo>). The EQ
+# *math* switches are all ``\<letter>`` (\f \r \s \b \a \i \x \o \d \l …),
+# so matching only \*, \!, \#, \@ never touches them.
+_GENERAL_FIELD_SWITCH_RE = re.compile(
+    r"""\\(?:
+          \*\s*[A-Za-z]+        # \* MERGEFORMAT / \* Upper / ...
+        | [#@]\s*"[^"]*"        # \# "0.00" / \@ "M/d/yyyy"
+        | !                     # \! lock-result
+    )""",
+    re.VERBOSE,
+)
+
 
 # ---------------------------------------------------------------------------
 # AST
@@ -147,6 +165,9 @@ class EqFieldMathSourceAdapter:
         m = re.match(r"(?is)eq\b\s*", text)
         if m:
             text = text[m.end():]
+        # Drop Word general field switches (\* MERGEFORMAT, \!, \# / \@
+        # pictures) before tokenizing — see _GENERAL_FIELD_SWITCH_RE.
+        text = _GENERAL_FIELD_SWITCH_RE.sub("", text).strip()
         try:
             tokens = _tokenize(text)
             parser = _Parser(tokens)

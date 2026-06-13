@@ -39,12 +39,17 @@ def is_identifier_char(ch: str) -> bool:
 
 
 def tokenize_math_text(text: str, *, comma_in_number: bool = True) -> list[ET.Element]:
-    """Split ``text`` into ``<mn>`` / ``<mi>`` / ``<mo>`` atoms.
+    """Split ``text`` into ``<mn>`` / ``<mi>`` / ``<mtext>`` / ``<mo>`` atoms.
 
     Digit runs (with ``.``, and ``,`` when ``comma_in_number``) coalesce
-    into one ``<mn>``; runs of identifier chars into one ``<mi>``; every
-    other non-space character becomes its own single-char ``<mo>``.
-    Whitespace is dropped (sources insert it only for visual padding).
+    into one ``<mn>``; runs of identifier chars into one ``<mi>``; runs of
+    natural-language letters that aren't math identifiers (CJK, kana,
+    Cyrillic, accented Latin — ``isalpha`` but outside the ASCII/Greek
+    identifier set) coalesce into one ``<mtext>``, which the backend hands
+    to the injected inline-text translator (e.g. the Chinese condition
+    「当x>0时」in a Word formula); every other non-space character becomes
+    its own single-char ``<mo>``. Whitespace is dropped (sources insert it
+    only for visual padding).
     """
     number_seps = ".," if comma_in_number else "."
     out: list[ET.Element] = []
@@ -76,6 +81,20 @@ def tokenize_math_text(text: str, *, comma_in_number: bool = True) -> list[ET.El
             out.append(atom)
             i = j
             continue
+        if ch.isalpha():
+            # A letter that isn't a math identifier (CJK / kana / Cyrillic /
+            # accented Latin) is natural-language text, not a per-char
+            # operator. Coalesce the run into <mtext> so the backend routes
+            # it through the inline-text translator instead of emitting one
+            # MATH_UNKNOWN_SYMBOL per character.
+            j = i
+            while j < n and text[j].isalpha() and not is_identifier_char(text[j]):
+                j += 1
+            atom = ET.Element("mtext")
+            atom.text = text[i:j]
+            out.append(atom)
+            i = j
+            continue
         atom = ET.Element("mo")
         atom.text = ch
         out.append(atom)
@@ -97,6 +116,9 @@ def classify_math_token(text: str) -> str:
         return "mn" if all(ch.isdigit() or ch in ".," for ch in text) else "mtext"
     if all(is_identifier_char(ch) for ch in text):
         return "mi"
-    if len(text) == 1:
+    if len(text) == 1 and not text.isalpha():
         return "mo"
+    # A lone natural-language letter (CJK / kana / …) or any multi-char run
+    # is text, not an operator — route it through <mtext> so it reaches the
+    # inline-text translator rather than becoming MATH_UNKNOWN_SYMBOL.
     return "mtext"

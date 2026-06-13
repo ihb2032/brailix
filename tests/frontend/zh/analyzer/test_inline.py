@@ -23,13 +23,16 @@ from brailix.frontend.zh import (
 from brailix.ir.inline import (
     ChineseToken,
     Connector,
+    Date,
     HanziChar,
     HanziMarker,
     LatinAcronym,
     LatinWord,
     MathInline,
     Number,
+    Percent,
     Punct,
+    Quantity,
     Space,
     Word,
 )
@@ -355,15 +358,28 @@ class TestInsertCrossKindBoundarySpaces:
         out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
         assert [type(n).__name__ for n in out] == ["Number", "Connector", "Word"]
 
-    def test_hanzi_then_number_unchanged(self) -> None:
-        """The reverse (第3) adds no connector: the number sign ⠼ already
-        marks where the number starts, so there is no ambiguity."""
+    def test_ordinal_prefix_di_then_number_stays_tight(self) -> None:
+        """第3: the ordinal prefix 第 is the ONE hanzi that binds directly
+        to a following number — no space (and no connector). Every other
+        hanzi → number boundary takes a space (see the next test)."""
         nodes = [
             HanziChar(surface="第", span=Span(0, 1)),
             Number(surface="3", span=Span(1, 2)),
         ]
         out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
         assert out == nodes
+
+    def test_other_hanzi_then_number_inserts_space(self) -> None:
+        """去3个 / 有3: a number is its own word, so any non-第 hanzi before
+        it takes a word-boundary space."""
+        nodes = [
+            HanziChar(surface="有", span=Span(0, 1)),
+            Number(surface="3", span=Span(1, 2)),
+        ]
+        out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
+        kinds = [type(n).__name__ for n in out]
+        assert kinds == ["HanziChar", "Space", "Number"]
+        assert out[1].span == Span(1, 1)
 
     def test_number_hanzi_non_adjacent_not_joined(self) -> None:
         # The source has a gap (10 页, with a space node position in between)
@@ -397,6 +413,64 @@ class TestInsertCrossKindBoundarySpaces:
         out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
         kinds = [type(n).__name__ for n in out]
         assert kinds == ["Word", "Space", "MathInline", "Space", "Word"]
+
+    def test_date_then_hanzi_inserts_space(self) -> None:
+        # 2026年5月17日我 — a Date is a whole word; the hanzi after it
+        # starts a new word and needs a boundary Space, else 日's cell
+        # abuts 我's. Regression: composites were in neither kind set.
+        nodes = [
+            Date(surface="2026年", span=Span(0, 5)),
+            HanziChar(surface="我", span=Span(5, 6)),
+        ]
+        out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
+        kinds = [type(n).__name__ for n in out]
+        assert kinds == ["Date", "Space", "HanziChar"]
+        assert out[1].surface == ""
+        assert out[1].span == Span(5, 5)
+
+    def test_quantity_then_hanzi_inserts_space(self) -> None:
+        # 3.5kg重 — the unit cell (kg) would otherwise abut 重.
+        nodes = [
+            Quantity(surface="3.5kg", span=Span(0, 5)),
+            HanziChar(surface="重", span=Span(5, 6)),
+        ]
+        out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
+        assert [type(n).__name__ for n in out] == [
+            "Quantity", "Space", "HanziChar"
+        ]
+
+    def test_percent_then_hanzi_inserts_space(self) -> None:
+        # 50%的人 — the ⠴ of the percent would otherwise abut 的.
+        nodes = [
+            Percent(surface="50%", span=Span(0, 3)),
+            Word(surface="的人", span=Span(3, 5)),
+        ]
+        out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
+        assert [type(n).__name__ for n in out] == ["Percent", "Space", "Word"]
+
+    def test_hanzi_then_composite_inserts_space(self) -> None:
+        # 在2026年 — a date is a whole word set off from the preceding
+        # hanzi, so the boundary takes a Space on this side too (not just
+        # composite→hanzi). A bare ordinal-bound Number (第3) is the
+        # different case and keeps no space; see test_inline's Number tests.
+        nodes = [
+            HanziChar(surface="在", span=Span(0, 1)),
+            Date(surface="2026年", span=Span(1, 6)),
+        ]
+        out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
+        kinds = [type(n).__name__ for n in out]
+        assert kinds == ["HanziChar", "Space", "Date"]
+        assert out[1].span == Span(1, 1)
+
+    def test_composite_hanzi_non_adjacent_not_spaced(self) -> None:
+        # A gap between the spans means a separator node already sits
+        # there — leave the boundary alone (mirrors the Number path).
+        nodes = [
+            Date(surface="2026年", span=Span(0, 5)),
+            HanziChar(surface="我", span=Span(8, 9)),
+        ]
+        out = insert_cross_kind_boundary_spaces(nodes, _COMPOUNDS)
+        assert out == nodes
 
 
 class TestLetterHanziCompoundConnector:

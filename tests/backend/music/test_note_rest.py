@@ -127,6 +127,26 @@ class TestSingleRest:
         # 8th rest = "x" = (1,3,4,6)
         assert _dots(cells) == [(1, 3, 4, 6)]
 
+    def test_measure_rest_is_whole_regardless_of_meter(self, profile, ctx):
+        # BANA Par. 5.1: a full-measure rest is written with a whole rest
+        # whatever the time signature. Exporters emit it as
+        # <rest measure="yes"/> with no <type>; it must NOT fall back to a
+        # quarter rest (which it did in every non-4/4 measure).
+        rest = ET.fromstring(
+            '<note><rest measure="yes"/><duration>24</duration></note>'
+        )
+        cells = emit_tree(rest, ctx, profile)
+        # Whole rest = "m" = (1,3,4), same as an explicit whole rest.
+        assert _dots(cells) == [(1, 3, 4)]
+        assert _roles(cells) == ["music_rest"]
+
+    def test_non_measure_rest_without_type_still_quarter(self, profile, ctx):
+        # Control: only measure="yes" forces whole — an ordinary rest with
+        # no <type> keeps the quarter default.
+        rest = ET.fromstring("<note><rest/><duration>1</duration></note>")
+        cells = emit_tree(rest, ctx, profile)
+        assert _dots(cells) == [(1, 2, 3, 6)]  # quarter rest
+
 
 class TestMalformedNote:
     def test_note_missing_pitch_and_rest_warns(self, profile, ctx):

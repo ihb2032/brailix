@@ -201,18 +201,21 @@ class TestHandAnnotatedDocument:
         # Expected cell count:
         # 我 (wo3):     final + tone                 = 2
         # 在 (zai4):    init + final + tone          = 3
-        # Date:         3 number_signs + 7 digits + 年 (3) + connector (1) +
-        #               月 (2) + connector (1) + 日 (ri4: init+tone) (2) = 19
-        #               (月/日 take the number→hanzi connector; 年 is the
-        #               exception)
+        # Date:         3 number_signs + 7 digits + 年 (3) + space (1) +
+        #               月 (2) + connector (1) + space (1) + 日 (2) +
+        #               connector (1) = 21
+        #               (the year/month/day components are space-separated:
+        #               2026年 5月 17日. Within a component the number
+        #               attaches to its marker — 年 directly, 月/日 via the
+        #               number→hanzi connector ⠤.)
         # 去 (qu4):     init + final + tone          = 3
         # 了 (le5):     init + final                 = 2 (neutral tone suppressed)
         # 重庆 (chong2 qing4):                       = 6
         # 银 (yin2):    final + tone                 = 2
         # 行 (hang2):   init + final + tone          = 3
         # 。 (⠐⠆):                                    = 2 cells, no blank
-        # Total: 2 + 3 + 19 + 3 + 2 + 6 + 2 + 3 + 2 = 42
-        assert len(rendered) == 42
+        # Total: 2 + 3 + 21 + 3 + 2 + 6 + 2 + 3 + 2 = 44
+        assert len(rendered) == 44
 
 
 # ---------------------------------------------------------------------------

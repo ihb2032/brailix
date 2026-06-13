@@ -30,6 +30,7 @@ from brailix.core.span import Span
 from brailix.ir.inline import (
     ChineseToken,
     Connector,
+    Date,
     HanziChar,
     HanziMarker,
     InlineNode,
@@ -37,6 +38,8 @@ from brailix.ir.inline import (
     LatinWord,
     MathInline,
     Number,
+    Percent,
+    Quantity,
     Space,
     Word,
 )
@@ -180,6 +183,12 @@ def tokens_to_inline(tokens: list[ChineseToken]) -> list[InlineNode]:
 
 _CHINESE_NODE_TYPES: tuple[type[InlineNode], ...] = (Word, HanziChar, HanziMarker)
 _FOREIGN_NODE_TYPES: tuple[type[InlineNode], ...] = (LatinWord, LatinAcronym, MathInline)
+# Normalizer composites — a whole date / measured quantity / percentage,
+# each its own "word", set off from adjacent Chinese on BOTH sides with a
+# boundary Space: 在2026年 是 在 ⟂ 2026年, 2026年去 是 2026年 ⟂ 去. (A bare
+# Number is not a composite — an ordinal-bound number like 第3 stays tight,
+# so the Chinese ↔ Number boundary keeps its own policy.)
+_COMPOSITE_NODE_TYPES: tuple[type[InlineNode], ...] = (Date, Quantity, Percent)
 # A foreign *letter* run (Latin / Greek — both flow through these two
 # IR types per the Normalizer) can bind to a hanzi as one compound word;
 # a MathInline ($...$) never does, so it's excluded from the compound
@@ -226,6 +235,14 @@ def insert_cross_kind_boundary_spaces(
     :func:`brailix.backend.number.translate_date`, where 年 is the lone
     exception that skips the connector.)
 
+    **Composite ↔ Chinese** (``在2026年`` / ``…日我`` / ``3.5kg重`` /
+    ``50%的``) takes a word-boundary :class:`Space` on *either* side. A
+    Date / Quantity / Percent is a whole word, set off from the
+    surrounding prose; without a separator it abuts the neighbouring
+    hanzi. A plain Space, not a connector. A bare :class:`Number` is
+    different — an ordinal-bound number (``第3``) stays tight — so the
+    Chinese ↔ Number boundary keeps its own policy and isn't spaced here.
+
     Idempotent: if a Space already sits between the two nodes (either
     user-typed or previously inserted), the boundary check fails on both
     flanking pairs, so no second separator is added.
@@ -247,6 +264,10 @@ def insert_cross_kind_boundary_spaces(
                 out.append(Space(surface="", span=span))
         elif _is_number_hanzi_join(prev, cur):
             out.append(Connector(surface="", span=span))
+        elif _is_composite_chinese_boundary(prev, cur):
+            out.append(Space(surface="", span=span))
+        elif _is_chinese_number_boundary(prev, cur):
+            out.append(Space(surface="", span=span))
         out.append(cur)
     return out
 
@@ -277,6 +298,61 @@ def _is_number_hanzi_join(prev: InlineNode, cur: InlineNode) -> bool:
     own path. Missing spans (hand-built fixtures) fall back to list
     adjacency alone, mirroring :func:`_is_letter_hanzi_compound`."""
     if not isinstance(prev, Number) or not isinstance(cur, _CHINESE_NODE_TYPES):
+        return False
+    if prev.span and cur.span and prev.span.end != cur.span.start:
+        return False
+    return True
+
+
+def _is_chinese_number_boundary(prev: InlineNode, cur: InlineNode) -> bool:
+    """Chinese run directly followed by a bare :class:`Number` → a
+    word-boundary :class:`Space`.
+
+    A number is its own word, so it is set off from the preceding hanzi:
+    ``有3个`` → 有 ⟂ 3个, ``去5次`` → 去 ⟂ 5次. The lone exception is the
+    ordinal prefix 第, which binds to its number (``第3``, no space) — per
+    spec 第 is the *only* hanzi that attaches directly to a following
+    number. (This is the Chinese→Number direction; the reverse,
+    Number→Chinese, takes the connector ⠤ — see
+    :func:`_is_number_hanzi_join`.)
+
+    Source-adjacency guard mirrors the other predicates: a known gap
+    between the spans means a separator node already sits between them."""
+    if not isinstance(prev, _CHINESE_NODE_TYPES) or not isinstance(cur, Number):
+        return False
+    if prev.surface and prev.surface.endswith("第"):
+        return False  # ordinal prefix binds directly to its number (第3)
+    if prev.span and cur.span and prev.span.end != cur.span.start:
+        return False
+    return True
+
+
+def _is_composite_chinese_boundary(prev: InlineNode, cur: InlineNode) -> bool:
+    """Whether a normalizer composite (Date / Quantity / Percent) is
+    directly adjacent to a Chinese run on **either** side, so a
+    word-boundary :class:`Space` belongs between them.
+
+    These nodes are whole words — a date, a measured quantity, a
+    percentage — set off from the surrounding prose on both sides:
+    ``在2026年`` is 在 + a date (在 ⟂ 2026年), ``2026年去`` is a date +
+    去 (2026年 ⟂ 去). Without a separator the composite abuts the hanzi
+    (its trailing 日 / unit / ⠴, or the number sign at its head running
+    straight on from the preceding syllable). A plain Space, not a
+    connector: the composite isn't bound to the neighbouring word.
+
+    (A bare :class:`Number` is different — a number bound by an ordinal
+    prefix like 第3 takes no space, so the Chinese ↔ Number boundary
+    keeps its own policy and isn't handled here.)
+
+    Source-adjacency guard mirrors the other predicates: a known gap
+    between the spans means a separator node already sits between them."""
+    composite_then_chinese = isinstance(prev, _COMPOSITE_NODE_TYPES) and isinstance(
+        cur, _CHINESE_NODE_TYPES
+    )
+    chinese_then_composite = isinstance(prev, _CHINESE_NODE_TYPES) and isinstance(
+        cur, _COMPOSITE_NODE_TYPES
+    )
+    if not (composite_then_chinese or chinese_then_composite):
         return False
     if prev.span and cur.span and prev.span.end != cur.span.start:
         return False

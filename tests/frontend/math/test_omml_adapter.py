@@ -76,6 +76,24 @@ class TestTextRuns:
         assert "<mo>+</mo>" in out
         assert "<mn>1</mn>" in out
 
+    def test_cjk_text_run_becomes_mtext_not_per_char_mo(self):
+        # Chinese inside a Word formula (the condition 「当x>0时」) must
+        # coalesce into <mtext> runs so the backend routes them through the
+        # injected inline-text translator. Per-char <mo>当</mo> hit the
+        # operator path and surfaced one MATH_UNKNOWN_SYMBOL per character.
+        # Interleaved math content (x / > / 0) keeps its own classes.
+        adapter = OmmlMathSourceAdapter()
+        out = adapter.to_mathml(_omml("<m:r><m:t>当x&gt;0时</m:t></m:r>"))
+        assert "<mtext>当</mtext>" in out
+        assert "<mtext>时</mtext>" in out
+        assert "<mo>当</mo>" not in out and "<mo>时</mo>" not in out
+        assert "<mi>x</mi>" in out and "<mn>0</mn>" in out
+
+    def test_consecutive_cjk_coalesce_into_one_mtext(self):
+        adapter = OmmlMathSourceAdapter()
+        out = adapter.to_mathml(_omml("<m:r><m:t>时刻</m:t></m:r>"))
+        assert "<mtext>时刻</mtext>" in out
+
 
 class TestFraction:
     def test_basic_fraction(self):
