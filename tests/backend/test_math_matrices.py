@@ -91,6 +91,46 @@ class TestMatrix:
         opens = [c for c in cells if c.role == "math_delim" and c.dots == (1, 2, 6)]
         assert len(opens) == 1
 
+    def test_binary_op_after_determinant_keeps_blank(self, profile):
+        # Regression: a matrix / determinant ends in HANG_CLOSE_CELL,
+        # which has empty dots. The required space before a following
+        # binary operator must survive — |a b| = 5 keeps the blank before
+        # ⠶. It was swallowed while _last_is_blank tested ``dots == ()``
+        # and so counted the hang_close sentinel as an existing blank.
+        cells, _ = emit(
+            mml(
+                "<math><mo>|</mo><mtable><mtr>"
+                "<mtd><mi>a</mi></mtd><mtd><mi>b</mi></mtd>"
+                "</mtr></mtable><mo>|</mo>"
+                "<mo>=</mo><mn>5</mn></math>"
+            ),
+            profile,
+        )
+        # The determinant really went through the hang region…
+        assert any(c.role == "hang_close" for c in cells)
+        # …and the '=' that follows it is immediately preceded by a real
+        # space cell, exactly like the parenthesised-operand control.
+        eq_idx = next(
+            i for i, c in enumerate(cells) if c.source_text == "="
+        )
+        assert cells[eq_idx - 1].role == "space"
+
+    def test_op_after_paren_operand_keeps_blank_control(self, profile):
+        # Control for the regression above: (a) = 5 always kept its blank
+        # (a closing paren is not an empty-dots sentinel). Pinned so the
+        # two paths stay in agreement.
+        cells, _ = emit(
+            mml(
+                "<math><mo>(</mo><mi>a</mi><mo>)</mo>"
+                "<mo>=</mo><mn>5</mn></math>"
+            ),
+            profile,
+        )
+        eq_idx = next(
+            i for i, c in enumerate(cells) if c.source_text == "="
+        )
+        assert cells[eq_idx - 1].role == "space"
+
 
 class TestEquationSystem:
     """``{``-fenced <mtable> with no closing fence — \\begin{cases} /
