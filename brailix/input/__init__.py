@@ -40,6 +40,7 @@ from brailix.input.docx import parse_doc, parse_docx
 from brailix.input.markdown import parse_markdown
 from brailix.input.music_xml import (
     ADAPTER_SCORE_SUFFIXES,
+    MUSIC_SUFFIXES,
     parse_musicxml,
     parse_score_file,
 )
@@ -60,13 +61,17 @@ __all__ = (
 _MARKDOWN_SUFFIXES = frozenset({".md", ".markdown"})
 _DOCX_SUFFIXES = frozenset({".docx", ".docm"})
 _DOC_SUFFIXES = frozenset({".doc"})
-# ``.musicxml`` / ``.mxl`` are score-only containers — route unconditionally.
 # ``.xml`` is a generic container (MathML, DocBook, arbitrary XML), so it is
 # sniffed (see ``_looks_like_musicxml``) before being handed to the music
 # adapter; non-score ``.xml`` falls back to plain text instead of producing
 # misleading MUSIC_* warnings / an empty score tree.
-_MUSIC_SUFFIXES = frozenset({".musicxml", ".mxl"})
 _SNIFFED_XML_SUFFIXES = frozenset({".xml"})
+# ``.musicxml`` / ``.mxl`` are score-only containers — route unconditionally.
+# Derived from the music adapter's own suffix set (the single source of truth)
+# minus the sniffed generic ``.xml`` container, so a new MusicXML-family suffix
+# added there flows through here automatically instead of needing a second
+# hand-maintained literal that could silently drift.
+_MUSIC_SUFFIXES = MUSIC_SUFFIXES - _SNIFFED_XML_SUFFIXES
 
 
 def _looks_like_musicxml(text: str) -> bool:
