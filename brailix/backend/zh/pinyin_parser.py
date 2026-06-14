@@ -49,6 +49,20 @@ _SYLLABIC_I_INITIALS: frozenset[str] = frozenset({
     "z", "c", "s",
 })
 
+# Syllabic nasal interjections. Front-ends (e.g. pypinyin) spell these as
+# narrow phonetic forms — 嗯 as ``n`` / ``ng``, 哼 as ``hng`` — but Chinese
+# braille writes each by its conventional syllable: 嗯 = ``en``, 哼 =
+# ``heng``. Alias the whole tone-stripped syllable to that spelling and let
+# the normal initial/final split + finals-table lookup take over, so no new
+# resource cell is needed. 呣 (``m``) and 噷 (``hm``) have no conventional
+# braille syllable, so they are deliberately left out: they fall through to
+# a MISSING_FINAL warning in the backend rather than a silent rime drop.
+_SYLLABIC_NASAL_ALIASES: dict[str, str] = {
+    "n": "en",
+    "ng": "en",
+    "hng": "heng",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class ParsedPinyin:
@@ -59,14 +73,35 @@ class ParsedPinyin:
       ``iou`` not ``iu``, ``uei`` not ``ui``, etc.).
     * ``tone`` is ``"1"``..``"5"`` or ``""`` if absent. Tone ``"5"`` is the
       neutral tone (light tone).
+    * ``syllabic`` is True only for the syllabic-i syllables
+      (zhi/chi/shi/ri/zi/ci/si) whose ``final`` is **intentionally** empty
+      because the consonant sustains with no vowel. It tells the empty
+      final of a deliberate syllabic-i apart from one produced by a
+      degenerate input that stripped down to a bare initial — so the
+      backend can emit nothing for the former but warn on the latter
+      rather than silently dropping the rime.
     """
 
     initial: str
     final: str
     tone: str
+    syllabic: bool = False
 
     def has_initial(self) -> bool:
         return bool(self.initial)
+
+
+def normalize_syllable_spelling(syllable: str) -> str:
+    """Canonicalize a pinyin syllable's spelling: strip surrounding
+    whitespace, lowercase, and treat the ASCII ``v`` as ``ü``.
+
+    Does NOT strip the tone digit — callers needing (initial, final, tone)
+    go through :func:`parse_pinyin`, while the NCB tone-omission tables key
+    on this tone-bearing spelling (``wo3`` / ``tou1`` / ``zi4``). Shared by
+    :func:`parse_pinyin`'s first step and the NCB policy's lookup key so the
+    two can't drift on the normalization rule.
+    """
+    return syllable.strip().lower().replace("v", "ü")
 
 
 def parse_pinyin(syllable: str) -> ParsedPinyin:
@@ -79,7 +114,7 @@ def parse_pinyin(syllable: str) -> ParsedPinyin:
     if not syllable:
         raise ValueError("empty syllable")
 
-    s = syllable.strip().lower().replace("v", "ü")
+    s = normalize_syllable_spelling(syllable)
 
     # Trailing tone digit (1..5).
     tone = ""
@@ -92,16 +127,23 @@ def parse_pinyin(syllable: str) -> ParsedPinyin:
     if not s:
         raise ValueError(f"no letters in {syllable!r}")
 
+    # Syllabic nasal interjections (嗯 n/ng, 哼 hng) → conventional braille
+    # syllable (en, heng) before the normal split, so they look up a real
+    # finals cell instead of stripping to a bare initial with an empty final.
+    s = _SYLLABIC_NASAL_ALIASES.get(s, s)
+
     # Apply w/y normalization first — handles glide-onset syllables.
     initial, final = _strip_initial(s)
     final = _normalize_final(initial, final)
 
     # Syllabic-i: zhi/chi/shi/ri/zi/ci/si have no real vowel — drop the
     # cosmetic "i" so the backend emits only the initial cell + tone.
+    syllabic = False
     if initial in _SYLLABIC_I_INITIALS and final == "i":
         final = ""
+        syllabic = True
 
-    return ParsedPinyin(initial=initial, final=final, tone=tone)
+    return ParsedPinyin(initial=initial, final=final, tone=tone, syllabic=syllabic)
 
 
 def _strip_initial(s: str) -> tuple[str, str]:

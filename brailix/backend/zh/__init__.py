@@ -306,10 +306,31 @@ def _emit_parsed(
             )
 
     if parsed.final == "":
-        # Syllabic-i pattern (zhi/chi/shi/ri/zi/ci/si): the parser
-        # deliberately dropped the cosmetic ``i`` because there's no
-        # vowel to spell. Emit nothing here — only initial + tone.
-        pass
+        if parsed.syllabic:
+            # Syllabic-i pattern (zhi/chi/shi/ri/zi/ci/si): the parser
+            # deliberately dropped the cosmetic ``i`` because there's no
+            # vowel to spell. Emit nothing here — only initial + tone.
+            pass
+        else:
+            # An empty final that is NOT a syllabic-i: the syllable
+            # stripped down to a bare initial. This is a degenerate
+            # reading such as the syllabic nasal 呣 ``m`` that has no
+            # conventional braille syllable (嗯 ``n`` and 哼 ``hng`` are
+            # aliased to en / heng in the parser). Warn so the dropped rime
+            # is visible to the proofreader instead of silently vanishing;
+            # add a placeholder cell only when no initial cell is already
+            # standing in for the syllable.
+            ctx.warnings.warn(
+                code="MISSING_FINAL",
+                message=f"no braille final for syllable {syllable!r}",
+                surface=ch,
+                span=span,
+                source="backend.zh",
+            )
+            if not parsed.has_initial():
+                cells.append(
+                    BrailleCell(dots=(), role="unknown", source_span=span, source_text=ch)
+                )
     else:
         dots = profile.finals.get(parsed.final)
         if dots is None:

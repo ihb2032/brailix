@@ -201,6 +201,13 @@ def _emit_part(
             mctx.prev_pitch = None  # octave inference restarts per staff
             mctx.prev_value_category = None  # BANA Par. 2.4: fresh reading
             mctx.pending_hairpin = None  # a hairpin never spans a staff
+            # BANA Par. 9.2: each staff reads with its own clef. Reset so a
+            # staff that declares no clef of its own (e.g. an unnumbered
+            # <clef> that MusicXML assigns only to staff 1) falls back to
+            # the default written direction instead of inheriting the
+            # previous staff's clef and reading its chords upside down.
+            mctx.current_clef_sign = None
+            mctx.current_clef_line = None
             children = [
                 _measure_for_staff(c, staff) if c.tag == "measure" else c
                 for c in elem
@@ -348,10 +355,12 @@ def _emit_multi_voice(
     voice_notes: dict[str, list[ET.Element]] = {v: [] for v in voices}
     pre_globals: list[ET.Element] = []
     post_globals: list[ET.Element] = []
+    current_voice: str | None = None
     for i, child in enumerate(children):
         if child.tag == "note":
             v = _voice_of(child)
             voice_notes.setdefault(v, []).append(child)
+            current_voice = v
         elif child.tag in ("backup", "forward"):
             continue
         elif i < first_cursor_idx:
@@ -359,10 +368,18 @@ def _emit_multi_voice(
         elif i > last_cursor_idx:
             post_globals.append(child)
         else:
-            # In the middle of the cursor zone — rare; assume the
-            # author meant it as a measure-level marker and post-place
-            # it so it doesn't interleave between voices.
-            post_globals.append(child)
+            # A non-note element between the first and last cursor — a
+            # <direction> (dynamic / wedge), a mid-measure <attributes>,
+            # etc. Attach it to the most recent note's voice so it stays
+            # where it sounds, instead of hoisting it to the end of the
+            # measure (which would move e.g. a dynamic onto the wrong
+            # note, or apply a mid-measure clef change too late). If the
+            # cursor zone opened on a <backup> (no note seen yet), fall
+            # back to the measure head.
+            if current_voice is not None:
+                voice_notes[current_voice].append(child)
+            else:
+                pre_globals.append(child)
 
     for el in pre_globals:
         _emit_element(cells, mctx, el)

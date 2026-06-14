@@ -147,6 +147,19 @@ class TestSingleRest:
         cells = emit_tree(rest, ctx, profile)
         assert _dots(cells) == [(1, 2, 3, 6)]  # quarter rest
 
+    def test_breve_rest(self, profile, ctx):
+        # BANA Table 5: breve (double-whole) rest = whole-rest cell + breve
+        # suffix (breve_rest_a = ["c_134", "c_13"]). Regression: the type
+        # had no _REST_FAMILY entry and fell through to the quarter-rest
+        # default silently (parallel to the breve note in test_breve_C4).
+        rest = ET.fromstring(
+            "<note><rest/><duration>32</duration><type>breve</type></note>"
+        )
+        cells = emit_tree(rest, ctx, profile)
+        # Whole-rest cell (1,3,4) + breve suffix (1,3), NOT quarter (1,2,3,6).
+        assert _dots(cells) == [(1, 3, 4), (1, 3)]
+        assert _roles(cells) == ["music_rest", "music_rest"]
+
 
 class TestMalformedNote:
     def test_note_missing_pitch_and_rest_warns(self, profile, ctx):
