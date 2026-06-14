@@ -162,3 +162,45 @@ class TestValueSigns:
             profile,
         )
         assert _value_sign_runs(cells) == []
+
+
+class TestBaselineDecoupledFromFeature:
+    """The value-category baseline (``prev_value_category``) must advance
+    for every note regardless of the ``music.value_signs`` gate, so a
+    mid-score toggle computes the next transition against the real previous
+    note rather than a stale one. The gate controls emission only."""
+
+    def test_baseline_advances_while_off_then_signs_on_toggle(
+        self, profile, monkeypatch
+    ):
+        from brailix.backend.music.context import MusicBrailleContext
+        from brailix.backend.music.handlers.notes import _emit_value_sign
+
+        state = {"on": False}
+        original = type(profile).feature
+
+        def _patched(self, name, default=None):
+            if name == "music.value_signs":
+                return state["on"]
+            return original(self, name, default)
+
+        monkeypatch.setattr(type(profile), "feature", _patched)
+
+        ctx = BackendContext(profile="cn_current", block_type="score")
+        mctx = MusicBrailleContext(profile=profile, backend=ctx)
+        cells: list = []
+
+        # Feature OFF: no sign emitted, but the baseline still advances.
+        _emit_value_sign(cells, mctx, "16th")
+        assert mctx.prev_value_category == "small"
+        _emit_value_sign(cells, mctx, "half")
+        assert mctx.prev_value_category == "large"
+        assert cells == []  # the gate suppressed every sign
+
+        # Toggle ON: the half-note (large) baseline is real, so a following
+        # 32nd (small) is a genuine transition and must sign — proof the
+        # baseline was not left stale during the off period.
+        state["on"] = True
+        _emit_value_sign(cells, mctx, "32nd")
+        assert mctx.prev_value_category == "small"
+        assert any(c.role == "music_value_sign" for c in cells)

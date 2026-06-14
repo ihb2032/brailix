@@ -76,8 +76,12 @@ def _emit_value_sign(
     Notes and rests share one stream — :func:`_emit_rest` calls this too,
     so a half-note followed by a 32nd-rest is marked correctly.
     """
-    if not mctx.profile.feature("music.value_signs", True):
-        return
+    # Advance the value-category baseline BEFORE the feature gate, so
+    # prev_value_category always tracks the real previous note. The gate
+    # controls only whether a sign is *emitted*; decoupling the two keeps
+    # the next transition correct even if music.value_signs is toggled
+    # mid-score, and mirrors the unknown-type branch below which likewise
+    # advances the baseline before returning.
     category = _VALUE_CATEGORY.get(type_name)
     if category is None:
         # Unknown <type> — the note body warns + renders the quarter
@@ -89,6 +93,8 @@ def _emit_value_sign(
         return
     prev = mctx.prev_value_category
     mctx.prev_value_category = category
+    if not mctx.profile.feature("music.value_signs", True):
+        return
     if category == prev:
         return  # no change (consecutive same category / 256th passage)
     if prev is None and category != "v256":
