@@ -409,10 +409,13 @@ def _consume_list(cur: _LineCursor) -> List:
 def _consume_table(cur: _LineCursor) -> Table | None:
     """Eat a contiguous run of ``| ... |`` lines into a :class:`Table`.
 
-    A separator line (``| --- | --- |``) between header and body is
-    detected and dropped — V1 doesn't model header semantics, but
-    skipping the separator avoids it landing in the output as a row
-    of dashes.
+    A separator line (``| --- | --- |``) is dropped when it sits where a
+    GFM separator can — the header/body boundary at row index 1, or a
+    leading row 0 (a lone separator then yields no body rows and falls
+    back to a paragraph, as before). V1 doesn't model header semantics;
+    dropping the separator just keeps it from landing in the output as a
+    row of dashes. A *later* body row (index 2+) that happens to be all
+    dashes — placeholder ``-`` cells — is kept as data instead.
 
     Cursor contract: this scans ahead without consuming and only
     advances the cursor when it returns a real :class:`Table`. A run
@@ -434,7 +437,7 @@ def _consume_table(cur: _LineCursor) -> Table | None:
         end += 1
     if len(consumed) < 1:
         return None
-    for line in consumed:
+    for idx, line in enumerate(consumed):
         # Inside vertical bars: split on |, strip each. Trailing /
         # leading empties from the wrapping pipes are dropped.
         inner = line.strip()
@@ -443,8 +446,10 @@ def _consume_table(cur: _LineCursor) -> Table | None:
         if inner.endswith("|"):
             inner = inner[:-1]
         parts = [p.strip() for p in inner.split("|")]
-        if all(_TABLE_SEP_CHARS.match(p) for p in parts):
-            # Header / body separator — skip.
+        # A GFM separator only sits at the header/body boundary (row 1) or
+        # as a leading row 0; drop an all-sep row only there, so a later
+        # all-dashes body row (placeholder ``-`` cells) survives as data.
+        if idx <= 1 and all(_TABLE_SEP_CHARS.match(p) for p in parts):
             continue
         cells = [TableCell(text=p) for p in parts]
         rows.append(TableRow(cells=cells))
@@ -452,6 +457,26 @@ def _consume_table(cur: _LineCursor) -> Table | None:
         return None
     cur.i = end  # commit the consumption now that it is a real table
     return Table(rows=rows, span=cur.span_of(start, cur.i))
+
+
+def _starts_block(line: str, stripped: str) -> bool:
+    """True if ``line`` opens a non-paragraph block, used to end a paragraph
+    at the next block boundary.
+
+    Mirrors the prefix dispatch in :func:`_iter_blocks` (heading / list /
+    quote / fenced code / ``$$`` display math). List markers must match the
+    raw ``line`` (they sit at column 0); the rest match the ``stripped``
+    form. Kept as one predicate so the paragraph terminator and the block
+    dispatcher can't fall out of sync.
+    """
+    return bool(
+        _HEADING_RE.match(stripped)
+        or _UNORDERED_RE.match(line)
+        or _ORDERED_RE.match(line)
+        or _QUOTE_RE.match(stripped)
+        or _FENCE_RE.match(stripped)
+        or stripped.startswith(_DOLLAR_FENCE)
+    )
 
 
 def _consume_paragraph(cur: _LineCursor) -> Paragraph:
@@ -477,14 +502,7 @@ def _consume_paragraph(cur: _LineCursor) -> Paragraph:
         if not line.strip():
             break
         stripped = line.strip()
-        if parts and (
-            _HEADING_RE.match(stripped)
-            or _UNORDERED_RE.match(line)
-            or _ORDERED_RE.match(line)
-            or _QUOTE_RE.match(stripped)
-            or _FENCE_RE.match(stripped)
-            or stripped.startswith(_DOLLAR_FENCE)
-        ):
+        if parts and _starts_block(line, stripped):
             break
         parts.append(line)
         cur.consume()

@@ -244,6 +244,20 @@ class TestTable:
         assert doc.blocks[1].text == "hello"
         assert all(b.text for b in doc.blocks)  # no ghost empty paragraph
 
+    def test_body_row_of_dashes_kept_as_data(self):
+        # A later body row that is all dashes (placeholder "-" cells) must
+        # NOT be mistaken for the header/body separator and dropped — only
+        # the separator at row index 1 is removed.
+        src = "| A | B |\n| - | - |\n| 1 | 2 |\n| - | - |"
+        doc = parse_markdown(src)
+        t = doc.blocks[0]
+        assert isinstance(t, Table)
+        # header + separator(dropped) + 2 body rows (incl. the all-dash one)
+        assert len(t.rows) == 3
+        assert [c.text for c in t.rows[0].cells] == ["A", "B"]
+        assert [c.text for c in t.rows[1].cells] == ["1", "2"]
+        assert [c.text for c in t.rows[2].cells] == ["-", "-"]
+
 
 class TestMixedDocument:
     def test_kitchen_sink(self):
