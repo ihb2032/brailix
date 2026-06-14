@@ -54,6 +54,13 @@ class Block:
                 # default_factory fields have default == MISSING, so skip
                 # any empty sequence (e.g. List.items / table rows) too.
                 or (isinstance(value, (list, tuple)) and not value)
+                # Structural IR fields (List.items / Table.rows /
+                # TableRow.cells) are serialised by the owning subclass's
+                # to_dict override, never the generic loop — emitting a raw
+                # IR object here would yield a payload that only explodes at
+                # json.dumps time. A forgotten override drops the field
+                # loudly-testably instead.
+                or _is_ir_payload(value)
             ):
                 continue
             d[f.name] = value
@@ -73,6 +80,26 @@ class Block:
         if self.span is not None:
             d["span"] = list(self.span.to_tuple())
         return d
+
+
+def _is_ir_payload(value: Any) -> bool:
+    """True if ``value`` is an IR node (:class:`Block` / :class:`InlineNode`)
+    or a sequence containing one.
+
+    These are the fields the generic :meth:`Block.to_dict` loop must not emit
+    raw: the structural containers (``List.items`` / ``Table.rows`` /
+    ``TableRow.cells``) are serialised by each subclass's ``to_dict`` override,
+    and inline ``children`` go through a dedicated path. Skipping IR payloads
+    keeps the base loop limited to JSON-native scalars, so a subclass that adds
+    a structural field but forgets to override ``to_dict`` drops it (caught by a
+    round-trip test) rather than emitting an object that only blows up later at
+    ``json.dumps``.
+    """
+    if isinstance(value, (Block, InlineNode)):
+        return True
+    if isinstance(value, (list, tuple)):
+        return any(isinstance(v, (Block, InlineNode)) for v in value)
+    return False
 
 
 # ---------------------------------------------------------------------------
