@@ -341,6 +341,30 @@ class TestGlobals:
         assert last_repeat_idx >= 0
         assert last_repeat_idx < first_note_idx
 
+    def test_mid_measure_direction_stays_with_its_voice(self, profile, ctx):
+        # Regression: a <direction> between voice 1's note and the voice-2
+        # cursor must stay with voice 1 (where it sounds), not get hoisted
+        # past the in-accord marker to the end of the measure. The old code
+        # post-placed every mid-cursor non-note element, which would move a
+        # dynamic onto the wrong note.
+        m = ET.fromstring(
+            '<measure number="1">'
+            + _note("C", 4, voice="1")
+            + "<direction><direction-type><dynamics><f/></dynamics>"
+            "</direction-type></direction>"
+            + "<backup><duration>1</duration></backup>"
+            + _note("E", 4, voice="2")
+            + "</measure>"
+        )
+        cells = emit_tree(m, ctx, profile)
+        roles = _roles(cells)
+        first_note_idx = roles.index("music_note")
+        dyn_idx = roles.index("music_dynamic")
+        marker_idx = roles.index("music_in_accord")
+        # The dynamic belongs to voice 1: it sits after voice 1's note and
+        # before the in-accord marker that separates the two voices.
+        assert first_note_idx < dyn_idx < marker_idx
+
 
 # ---------------------------------------------------------------------------
 # Pipeline integration

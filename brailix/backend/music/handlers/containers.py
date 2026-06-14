@@ -348,10 +348,12 @@ def _emit_multi_voice(
     voice_notes: dict[str, list[ET.Element]] = {v: [] for v in voices}
     pre_globals: list[ET.Element] = []
     post_globals: list[ET.Element] = []
+    current_voice: str | None = None
     for i, child in enumerate(children):
         if child.tag == "note":
             v = _voice_of(child)
             voice_notes.setdefault(v, []).append(child)
+            current_voice = v
         elif child.tag in ("backup", "forward"):
             continue
         elif i < first_cursor_idx:
@@ -359,10 +361,18 @@ def _emit_multi_voice(
         elif i > last_cursor_idx:
             post_globals.append(child)
         else:
-            # In the middle of the cursor zone — rare; assume the
-            # author meant it as a measure-level marker and post-place
-            # it so it doesn't interleave between voices.
-            post_globals.append(child)
+            # A non-note element between the first and last cursor — a
+            # <direction> (dynamic / wedge), a mid-measure <attributes>,
+            # etc. Attach it to the most recent note's voice so it stays
+            # where it sounds, instead of hoisting it to the end of the
+            # measure (which would move e.g. a dynamic onto the wrong
+            # note, or apply a mid-measure clef change too late). If the
+            # cursor zone opened on a <backup> (no note seen yet), fall
+            # back to the measure head.
+            if current_voice is not None:
+                voice_notes[current_voice].append(child)
+            else:
+                pre_globals.append(child)
 
     for el in pre_globals:
         _emit_element(cells, mctx, el)
