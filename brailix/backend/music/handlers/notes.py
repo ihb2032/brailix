@@ -622,6 +622,11 @@ _REST_FAMILY: dict[str, str] = {
     "64th":    "quarter_or_64th_rest",
     "128th":   "eighth_or_128th_rest",
     "256th":   "rest_256th",
+    # breve (double-whole) rest — BANA Table 5 form A (whole-rest cell +
+    # breve suffix), parallel to the breve entry in _TYPE_TO_FAMILY. Without
+    # it a breve rest fell through to the quarter-rest default and was
+    # silently mistranslated.
+    "breve":   "breve_rest_a",
 }
 
 
