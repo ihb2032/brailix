@@ -498,6 +498,23 @@ class TestPipelineParseText:
         with pytest.raises(ValueError, match="unknown parse format"):
             pipe.parse_text("x", format="latex")
 
+    def test_musicxml_format_wraps_score_block_unpopulated(
+        self, pipe: Pipeline
+    ) -> None:
+        """``format="musicxml"`` wraps raw MusicXML as one ScoreBlock,
+        parse-only (children empty) so a caller can compile it per-block
+        the same way it does markdown / plain."""
+        doc = pipe.parse_text(_SCORE_XML, format="musicxml")
+        assert len(doc.blocks) == 1
+        score = doc.blocks[0]
+        assert isinstance(score, ScoreBlock)
+        assert score.source == "musicxml"
+        assert score.text == _SCORE_XML
+        # Parse-only — the music frontend hasn't run yet.
+        assert score.children == []
+        # Same metadata stamping as the other parse_text formats.
+        assert doc.metadata.get("profile") == "cn_current"
+
     def test_metadata_carries_pipeline_profile_and_language(
         self, pipe: Pipeline
     ) -> None:

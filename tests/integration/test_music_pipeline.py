@@ -224,6 +224,46 @@ class TestSoftFailure:
         assert "MUSIC_ADAPTER_MISSING" in codes
         assert "MUSIC_NO_IR" in codes
 
+    def test_adapter_raising_emits_block_parse_failed(self, pipe, monkeypatch):
+        # The graceful paths above (<music-error> tree, missing adapter)
+        # never reach the wide ``except`` in _populate_music_block. This
+        # exercises that guard directly: a music frontend that *raises*
+        # an unexpected exception must be caught, recorded as
+        # ``MUSIC_BLOCK_PARSE_FAILED``, and fall back to a MusicInline
+        # with score=None — the backend then degrades that to
+        # ``MUSIC_NO_IR`` instead of letting the exception abort the
+        # whole document. Mirror of the display-math guard in
+        # tests/backend/test_block.py. _populate_music_block parses via
+        # the module-level ``_frontend_parse_music_tree`` alias, so patch
+        # it there.
+        import brailix.pipeline as pipeline_mod
+
+        def _boom(*_a, **_kw):
+            raise RuntimeError("synthetic music adapter crash")
+
+        monkeypatch.setattr(pipeline_mod, "_frontend_parse_music_tree", _boom)
+
+        doc = DocumentIR(
+            blocks=[ScoreBlock(text=SIMPLE_SCORE_XML, source="musicxml")]
+        )
+        result = pipe.translate_document(doc)
+
+        codes = [w.code for w in result.warnings.warnings]
+        # The pipeline caught the crash and recorded it...
+        assert "MUSIC_BLOCK_PARSE_FAILED" in codes
+        # ...and the backend degraded the score=None handoff rather than
+        # crashing.
+        assert "MUSIC_NO_IR" in codes
+        # Did not abort: one fallback score block with cells still lands.
+        bblocks = result.braille_ir.blocks
+        assert len(bblocks) == 1
+        assert bblocks[0].block_type == "score"
+        assert bblocks[0].cells, "expected fallback cells over the surface"
+        # The populated child is a MusicInline carrying no parsed tree.
+        child = result.ir.blocks[0].children[0]
+        assert isinstance(child, MusicInline)
+        assert child.score is None
+
 
 # ---------------------------------------------------------------------------
 # Block-level: ensure the music block plays nicely alongside other blocks
