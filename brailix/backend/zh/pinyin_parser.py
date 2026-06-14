@@ -91,6 +91,19 @@ class ParsedPinyin:
         return bool(self.initial)
 
 
+def normalize_syllable_spelling(syllable: str) -> str:
+    """Canonicalize a pinyin syllable's spelling: strip surrounding
+    whitespace, lowercase, and treat the ASCII ``v`` as ``ü``.
+
+    Does NOT strip the tone digit — callers needing (initial, final, tone)
+    go through :func:`parse_pinyin`, while the NCB tone-omission tables key
+    on this tone-bearing spelling (``wo3`` / ``tou1`` / ``zi4``). Shared by
+    :func:`parse_pinyin`'s first step and the NCB policy's lookup key so the
+    two can't drift on the normalization rule.
+    """
+    return syllable.strip().lower().replace("v", "ü")
+
+
 def parse_pinyin(syllable: str) -> ParsedPinyin:
     """Decompose one pinyin syllable into (initial, final, tone).
 
@@ -101,7 +114,7 @@ def parse_pinyin(syllable: str) -> ParsedPinyin:
     if not syllable:
         raise ValueError("empty syllable")
 
-    s = syllable.strip().lower().replace("v", "ü")
+    s = normalize_syllable_spelling(syllable)
 
     # Trailing tone digit (1..5).
     tone = ""

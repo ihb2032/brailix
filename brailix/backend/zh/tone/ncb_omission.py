@@ -36,7 +36,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from brailix.backend.zh.pinyin_parser import ParsedPinyin
+from brailix.backend.zh.pinyin_parser import (
+    ParsedPinyin,
+    normalize_syllable_spelling,
+)
 from brailix.backend.zh.tone import register
 from brailix.core.config import BrailleProfile
 from brailix.core.config.zh_ncb_tables import NcbToneOmission
@@ -74,7 +77,7 @@ class NcbOmissionPolicy:
         ):
             return True
 
-        syl_norm = _normalize_syllable_key(syllable)
+        syl_norm = normalize_syllable_spelling(syllable)
 
         if parsed.has_initial():
             rule = self.table.by_initial.get(parsed.initial)
@@ -93,17 +96,6 @@ class NcbOmissionPolicy:
         if syl_norm in omit:
             return False
         return parsed.tone != self.table.zero_initial.get("default_omit_tone")
-
-
-def _normalize_syllable_key(syllable: str) -> str:
-    """Canonicalize a syllable string for lookup in keep/omit lists.
-
-    Matches the first-line normalization in
-    :func:`brailix.backend.zh.pinyin_parser.parse_pinyin` so the lookup
-    tables can use the same orthographic form the guide uses
-    (``wo3``, ``tou1``, ``zi4``).
-    """
-    return syllable.strip().lower().replace("v", "ü")
 
 
 def _build(profile: BrailleProfile) -> NcbOmissionPolicy:
