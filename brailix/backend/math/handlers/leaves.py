@@ -35,6 +35,36 @@ from brailix.ir.braille import BLANK_CELL, LINE_BREAK_CELL, BrailleCell
 _MATH_DIGIT_ROLES = DigitRoles(digit="math_digit")
 
 
+def _warn_unknown_char(
+    mctx: MathBrailleContext,
+    cells: list[BrailleCell],
+    *,
+    code: str,
+    kind: str,
+    text: str,
+) -> None:
+    """Warn that ``text`` has no braille mapping and append an unknown cell.
+
+    Shared by the identifier-char / mo / mtext-per-char leaf paths, whose
+    unknown-character tails were byte-identical apart from the warning
+    ``code`` and the human-readable ``kind`` noun ("identifier" / "symbol"
+    / "text char"). Appends a :func:`nonstandard_char_hint` to the message
+    when one is available. Does NOT touch ``need_number_sign`` — callers
+    set it (identifier / mo) or skip it (the mtext loop) as their context
+    requires.
+    """
+    hint = nonstandard_char_hint(text)
+    mctx.backend.warnings.warn(
+        code=code,
+        message=f"no braille mapping for math {kind} {text!r}"
+        + (f" — {hint}" if hint else ""),
+        surface=text,
+        span=mctx.span,
+        source="backend.math",
+    )
+    cells.append(_unknown_cell(text, mctx.span))
+
+
 def _emit_mi(
     cells: list[BrailleCell], mctx: MathBrailleContext, elem: ET.Element
 ) -> None:
@@ -117,16 +147,9 @@ def _emit_identifier_char(
         )
         mctx.need_number_sign = True
         return
-    _hint = nonstandard_char_hint(ch)
-    mctx.backend.warnings.warn(
-        code="MATH_UNKNOWN_IDENTIFIER",
-        message=f"no braille mapping for math identifier {ch!r}"
-        + (f" — {_hint}" if _hint else ""),
-        surface=ch,
-        span=mctx.span,
-        source="backend.math",
+    _warn_unknown_char(
+        mctx, cells, code="MATH_UNKNOWN_IDENTIFIER", kind="identifier", text=ch
     )
-    cells.append(_unknown_cell(ch, mctx.span))
     mctx.need_number_sign = True
 
 
@@ -367,16 +390,9 @@ def _emit_mo(
             )
             mctx.need_number_sign = True
             return
-        _hint = nonstandard_char_hint(text)
-        mctx.backend.warnings.warn(
-            code="MATH_UNKNOWN_SYMBOL",
-            message=f"no braille mapping for math symbol {text!r}"
-            + (f" — {_hint}" if _hint else ""),
-            surface=text,
-            span=mctx.span,
-            source="backend.math",
+        _warn_unknown_char(
+            mctx, cells, code="MATH_UNKNOWN_SYMBOL", kind="symbol", text=text
         )
-        cells.append(_unknown_cell(text, mctx.span))
         mctx.need_number_sign = True
         return
 
@@ -493,16 +509,9 @@ def _emit_mtext_per_char(
             if punct:
                 dots_seq = punct
         if dots_seq is None:
-            _hint = nonstandard_char_hint(ch)
-            mctx.backend.warnings.warn(
-                code="MATH_UNKNOWN_TEXT_CHAR",
-                message=f"no braille mapping for math text char {ch!r}"
-                + (f" — {_hint}" if _hint else ""),
-                surface=ch,
-                span=mctx.span,
-                source="backend.math",
+            _warn_unknown_char(
+                mctx, cells, code="MATH_UNKNOWN_TEXT_CHAR", kind="text char", text=ch
             )
-            cells.append(_unknown_cell(ch, mctx.span))
             continue
         cells.extend(
             BrailleCell(
