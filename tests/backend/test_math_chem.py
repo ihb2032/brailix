@@ -124,6 +124,73 @@ class TestPerElementMode:
 
 
 # ---------------------------------------------------------------------------
+# Mixed molecule: a multi-letter element next to a *run* of two or more
+# single-letter elements. The multi-letter element keeps the capital sign ⠠;
+# the run shares one chemical-formula indicator ⠸ (NaOH = ⠠Na ⠸OH). A *lone*
+# single-letter element next to a multi-letter one still takes the capital
+# sign (HCl, SiO2 — see TestPerElementMode).
+# ---------------------------------------------------------------------------
+
+
+class TestMixedSingleLetterRun:
+    def test_naoh(self, profile):
+        # NaOH = ⠠Na ⠸OH — the reported bug. Na (multi-letter) keeps the
+        # capital sign; the OH run shares one leading ⠸ and writes both bare.
+        cells, wc = ce_cells("NaOH", profile)
+        assert dots(cells) == [
+            (6,), (1, 3, 4, 5), (1,),          # ⠠ N a
+            (4, 5, 6), (1, 3, 5), (1, 2, 5),   # ⠸ O H
+        ]
+        assert not wc.warnings
+
+    def test_naoh_one_indicator_after_the_capital(self, profile):
+        # Exactly one ⠸ and one ⠠, the ⠸ introducing the OH run *after* ⠠Na.
+        cells, _ = ce_cells("NaOH", profile)
+        inds = [i for i, c in enumerate(cells) if c.role == "math_chem_indicator"]
+        caps = [i for i, c in enumerate(cells) if c.role == "math_chem_capital"]
+        assert len(inds) == 1 and len(caps) == 1
+        assert caps[0] < inds[0]
+
+    def test_run_of_three_single_letters(self, profile):
+        # NaHCO3 = ⠠Na ⠸HCO₃ — the H C O run (three single-letter elements)
+        # shares one ⠸; the trailing 3 lowers onto O.
+        cells, wc = ce_cells("NaHCO3", profile)
+        assert dots(cells) == [
+            (6,), (1, 3, 4, 5), (1,),                  # ⠠ N a
+            (4, 5, 6), (1, 2, 5), (1, 4), (1, 3, 5),   # ⠸ H C O
+            (2, 5),                                    # ₃ (lowered)
+        ]
+        assert not wc.warnings
+
+    def test_run_before_a_multiletter_element(self, profile):
+        # COCl2 = ⠸CO ⠠Cl₂ — a leading CO run takes the ⠸, then Cl
+        # (multi-letter) takes the capital sign with its lowered 2.
+        cells, wc = ce_cells("COCl2", profile)
+        assert dots(cells) == [
+            (4, 5, 6), (1, 4), (1, 3, 5),     # ⠸ C O
+            (6,), (1, 4), (1, 2, 3), (2, 3),  # ⠠ C l ₂
+        ]
+        assert not wc.warnings
+
+    def test_lone_single_letter_next_to_multi_keeps_capital(self, profile):
+        # HCl: H is a *lone* single-letter element beside multi-letter Cl, so
+        # it keeps the capital sign — no ⠸ at all (contrast NaOH's OH run).
+        cells, _ = ce_cells("HCl", profile)
+        assert all(c.role != "math_chem_indicator" for c in cells)
+        assert dots(cells) == [
+            (6,), (1, 2, 5),            # ⠠ H
+            (6,), (1, 4), (1, 2, 3),    # ⠠ C l
+        ]
+
+    def test_dissociation_indicator_is_consistent(self, profile):
+        # NaOH -> Na+ + OH-: the neutral molecule's OH run and the OH⁻ ion
+        # both render ⠸OH — two indicators, no warnings, no leftover casing.
+        cells, wc = ce_cells("NaOH -> Na+ + OH-", profile)
+        assert not wc.warnings
+        assert sum(c.role == "math_chem_indicator" for c in cells) == 2
+
+
+# ---------------------------------------------------------------------------
 # Gas ↑ / precipitate ↓ arrows (uarr = ⠰⠌ / darr = ⠘⠡), attached with no
 # leading space.
 # ---------------------------------------------------------------------------

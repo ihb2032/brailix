@@ -8,14 +8,17 @@ the points the project's braille domain expert specified:
 * **Subscripts carry no subscript indicator.** The digit uses its lowered
   Antoine form directly — H₂O's ``2`` is ⠆ (``digits_lower["2"]``), with
   no ``script.sub`` marker, no number sign, no closing marker.
-* **Casing is decided per molecule.** A molecule whose elements are all
-  single letters gets one leading chemical-formula indicator ⠸
-  (``chem.indicator``) and bare element letters (``H2O`` → ⠸ H ⠆ O). A
-  molecule containing a multi-letter element (Si, Na, Cl) drops the ⠸ and
-  prefixes each element's first letter with the capital sign ⠠
-  (``letter_prefix.latin_upper``), writing the
-  rest bare (``H2SiO3`` → ⠠H ⠆ ⠠Si ⠠O ⠒). In an equation each species
-  decides independently (``Na + H2`` → ⠠Na … ⠸H₂).
+* **Casing is decided per molecule, then per run within it.** A molecule
+  whose elements are all single letters gets one leading chemical-formula
+  indicator ⠸ (``chem.indicator``) and bare element letters (``H2O`` → ⠸ H ⠆
+  O). A molecule containing a multi-letter element (Si, Na, Cl) is cased
+  piecewise: each multi-letter element prefixes its first letter with the
+  capital sign ⠠ (``letter_prefix.latin_upper``) and writes the rest bare; a
+  *run* of two or more consecutive single-letter elements shares one ⠸ and
+  writes them bare (``NaOH`` → ⠠Na ⠸OH — the OH run carries the ⠸); and a
+  *lone* single-letter element wedged between cased elements takes the capital
+  sign too (``H2SiO3`` → ⠠H ⠆ ⠠Si ⠠O ⠒, ``SiO2`` → ⠠Si ⠠O ⠆). In an equation
+  each species decides independently (``Na + H2`` → ⠠Na … ⠸H₂).
 * **Coefficients and the operators ``+`` / ``=`` / ⇌ reuse maths.** They are
   emitted through the ordinary number / operator handlers (coefficient =
   number-sign + digit; ``+`` / ``=`` keep maths spacing). Only the gas ↑ /
@@ -118,30 +121,79 @@ def _is_charge_node(node: ET.Element) -> bool:
 def emit_molecule(
     cells: list[BrailleCell], mctx: MathBrailleContext, nodes: list[ET.Element]
 ) -> None:
-    """Emit one molecule (a run of element nodes), deciding casing for it:
-    all-single-letter → one leading chemical-formula indicator ⠸ + bare
-    letters; any multi-letter element → per-element capital sign ⠠, no ⠸.
+    """Emit one molecule (a run of element nodes), deciding its casing:
+
+    * **No multi-letter element** (``H2O`` / ``KOH`` / ``O2``) — one leading
+      chemical-formula indicator ⠸ then bare letters, however many elements
+      (a lone single-letter molecule still takes the ⠸, not a capital sign).
+    * **A multi-letter element present** — cased piecewise, left to right:
+      a multi-letter element (``Na`` / ``Si``) → capital sign ⠠ + its letters;
+      a **run of ≥2 consecutive single-letter elements** → one shared ⠸ then
+      those bare letters (``NaOH`` → ⠠Na ⠸OH); a **lone single-letter element**
+      next to a cased one (``SiO2`` → ⠠Si ⠠O, ``H2SiO3`` → ⠠H ⠠Si ⠠O) →
+      capital sign ⠠, since one bare letter needs no run marker.
 
     A run holding a charge (an ion) is always written per-element: a single
     ion like F⁻ / O²⁻ takes the capital sign ⠠ (⠠F / ⠠O), not the
     chemical-formula indicator ⠸ a neutral single-letter formula would carry —
-    the ⠸ marks a molecule, not a charged species."""
+    the ⠸ marks a molecule, not a charged species.
+    """
     from brailix.backend.math.dispatch import _emit_element
 
-    mctx.chem_per_element = _any_multi_letter(nodes) or any(
-        _is_charge_node(node) for node in nodes
-    )
-    if not mctx.chem_per_element:
-        for dots in mctx.profile.math_structure("chem.indicator"):
-            cells.append(
-                BrailleCell(
-                    dots=dots,
-                    role="math_chem_indicator",
-                    source_span=mctx.span,
-                )
+    if any(_is_charge_node(node) for node in nodes):
+        # A charged species in the run forces per-element casing (capital
+        # sign, never ⠸) for every element in it.
+        mctx.chem_per_element = True
+        for node in nodes:
+            _emit_element(cells, mctx, node)
+        return
+    if not _any_multi_letter(nodes):
+        # All-single-letter molecule: one leading ⠸, bare letters.
+        mctx.chem_per_element = False
+        _emit_chem_indicator(cells, mctx)
+        for node in nodes:
+            _emit_element(cells, mctx, node)
+        return
+    # Mixed molecule (≥1 multi-letter element): case each maximal run of
+    # consecutive single-letter elements together — ≥2 share one leading ⠸, a
+    # lone one takes the capital sign — and every multi-letter element / bond
+    # per element.
+    i = 0
+    n = len(nodes)
+    while i < n:
+        if _is_single_letter_element(nodes[i]):
+            j = i + 1
+            while j < n and _is_single_letter_element(nodes[j]):
+                j += 1
+            if j - i >= 2:
+                mctx.chem_per_element = False
+                _emit_chem_indicator(cells, mctx)
+            else:
+                mctx.chem_per_element = True
+            for node in nodes[i:j]:
+                _emit_element(cells, mctx, node)
+            i = j
+        else:
+            # A multi-letter element, or a structural bond <mo>: per element.
+            mctx.chem_per_element = True
+            _emit_element(cells, mctx, nodes[i])
+            i += 1
+
+
+def _emit_chem_indicator(
+    cells: list[BrailleCell], mctx: MathBrailleContext
+) -> None:
+    """Append the leading chemical-formula indicator ⠸ (``chem.indicator``) —
+    the marker that introduces a bare-letter run: a whole single-letter
+    molecule, or a ≥2 single-letter-element run inside a mixed one."""
+    for dots in mctx.profile.math_structure("chem.indicator"):
+        cells.append(
+            BrailleCell(
+                dots=dots,
+                role="math_chem_indicator",
+                source_span=mctx.span,
             )
-    for node in nodes:
-        _emit_element(cells, mctx, node)
+        )
 
 
 def _any_multi_letter(nodes: list[ET.Element]) -> bool:
@@ -153,15 +205,40 @@ def _any_multi_letter(nodes: list[ET.Element]) -> bool:
     return False
 
 
+def _element_symbol(node: ET.Element) -> str | None:
+    """The element symbol text of an element node (its ``<mi>`` content), or
+    ``None`` when ``node`` isn't a single-element node (a structural bond
+    ``<mo>``, say). Reads the ``<mi>`` directly, or the base of an
+    ``<msub>`` / ``<msup>`` / ``<msubsup>``."""
+    if node.tag == "mi":
+        return (node.text or "").strip()
+    if (
+        node.tag in ("msub", "msup", "msubsup")
+        and len(node) >= 1
+        and node[0].tag == "mi"
+    ):
+        return (node[0].text or "").strip()
+    return None
+
+
+def _is_single_letter_element(node: ET.Element) -> bool:
+    """True for an element node whose symbol is a single letter (``H``, ``O`` —
+    not ``Na`` / ``Si``). Consecutive single-letter elements group into one
+    ⠸-marked run inside an otherwise per-element (mixed) molecule."""
+    sym = _element_symbol(node)
+    return sym is not None and len(sym) == 1
+
+
 def emit_element(
     cells: list[BrailleCell], mctx: MathBrailleContext, elem: ET.Element
 ) -> None:
     """Emit one element symbol's letters.
 
-    In per-element mode the first letter gets the capital sign ⠠; in
-    all-single-letter mode there is no per-letter prefix (the leading ⠸
-    already stood in for it). Every letter is the bare letter cell from
-    the profile's ``latin_letters`` table.
+    With ``chem_per_element`` set the first letter gets the capital sign ⠠;
+    otherwise — indicator mode, a whole single-letter molecule or a ≥2
+    single-letter-element run already introduced by a leading ⠸ — there is no
+    per-letter prefix. Every letter is the bare letter cell from the profile's
+    ``latin_letters`` table.
     """
     text = (elem.text or "").strip()
     if not text:

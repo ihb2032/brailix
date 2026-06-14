@@ -34,10 +34,12 @@ class MathBrailleContext:
       :mod:`brailix.backend.math.chem`). Set/cleared by the dispatcher
       from the ``data-bk-chem`` attribute, the same way ``span`` is
       pushed from ``data-bk-span``.
-    * ``chem_per_element`` — set per molecule by :func:`chem.emit_molecule`:
-      ``False`` = all-single-letter molecule (one leading ⠸, bare letters);
-      ``True`` = molecule has a multi-letter element (per-element capital
-      sign, no ⠸).
+    * ``chem_per_element`` — set by :func:`chem.emit_molecule`, per casing run
+      rather than once per molecule: ``False`` = a bare-letter run under a
+      leading ⠸ (a whole single-letter molecule, or a ≥2 single-letter-element
+      run inside a mixed one); ``True`` = per-element capital sign, no ⠸ (a
+      multi-letter element, a lone single-letter element next to one, or an
+      ion).
     * ``fraction_is_function_arg`` — one-shot flag set by the sibling
       walker (``handlers.matrices._emit_children_with_matrix``) just
       before dispatching a fraction that sits in function-argument
