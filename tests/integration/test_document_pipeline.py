@@ -257,6 +257,54 @@ class TestPopulateBlockRecursion:
         assert p.span.start == 0
         assert p.span.end == len("一段")
 
+    def test_prepopulated_block_with_text_gets_span_synthesized(self, pipe):
+        # A block arriving with children AND raw text but no span lands a
+        # span too — the same treatment math / code / score blocks already
+        # got, now uniform for prose (previously the one branch that
+        # silently left span=None for a populated text-bearing block).
+        from brailix.ir.document import DocumentIR, Paragraph
+        from brailix.ir.inline import HanziChar
+
+        p = Paragraph(children=[HanziChar(surface="字")], text="字", span=None)
+        assert p.span is None
+        doc = DocumentIR(blocks=[p])
+        pipe.translate_document(doc)
+        assert p.span is not None
+        assert p.span.start == 0
+        assert p.span.end == len("字")
+        # Pre-populated children left intact (frontend didn't re-run).
+        assert len(p.children) == 1
+        assert p.children[0].surface == "字"
+
+
+# ---------------------------------------------------------------------------
+# translate_document stamps the pipeline's identity onto the IR metadata
+# (parity with translate_text / parse_*), even for a hand-built doc.
+# ---------------------------------------------------------------------------
+
+
+class TestTranslateDocumentMetadata:
+    def test_handbuilt_doc_gets_pipeline_identity_stamped(self, pipe):
+        from brailix.ir.document import DocumentIR, Paragraph
+
+        doc = DocumentIR(blocks=[Paragraph(text="字")])
+        assert doc.metadata == {}
+        result = pipe.translate_document(doc)
+        assert result.ir.metadata["profile"] == pipe.profile
+        assert result.ir.metadata["language"] == pipe.profile_language
+
+    def test_other_metadata_keys_preserved(self, pipe):
+        # Stamping identity must not wipe unrelated caller metadata.
+        from brailix.ir.document import DocumentIR, Paragraph
+
+        doc = DocumentIR(
+            metadata={"custom": "keep-me"},
+            blocks=[Paragraph(text="字")],
+        )
+        pipe.translate_document(doc)
+        assert doc.metadata["custom"] == "keep-me"
+        assert doc.metadata["profile"] == pipe.profile
+
 
 # ---------------------------------------------------------------------------
 # Pipeline.translate_file — file → IR → braille shortcut. parse_file
