@@ -11,8 +11,8 @@ import xml.etree.ElementTree as ET
 
 from brailix.backend.music.context import MusicBrailleContext
 from brailix.backend.music.utils import (
-    _annotate_source_text,
     emit_cells_for_entity,
+    emit_dot_seq,
     first_child_text,
     numeral_dots,
 )
@@ -164,15 +164,10 @@ def _emit_harmony(
         # Defensive — bare_letter covers a-z, so this is impossible
         # after the A-G check above.
         return
-    span = mctx.span
-    annotated = _annotate_source_text(source_label, mctx)
-    cells.append(
-        BrailleCell(
-            dots=letter_dots,
-            role="music_chord_symbol",
-            source_span=span,
-            source_text=annotated,
-        )
+    emit_dot_seq(
+        cells, mctx, [letter_dots],
+        role="music_chord_symbol",
+        source_text=source_label,
     )
 
     # Root accidental (only when nonzero — natural is implicit).
@@ -215,30 +210,19 @@ def _emit_harmony(
                     for ch in payload:
                         if ch.isdigit():
                             # Lower-row digit cell.
-                            cells.append(
-                                BrailleCell(
-                                    dots=numeral_dots(
-                                        mctx.profile, f"digit_lower_{ch}"
-                                    ),
-                                    role="music_chord_symbol",
-                                    source_span=span,
-                                    source_text=_annotate_source_text(
-                                        f"{source_label}/{kind}", mctx,
-                                    ),
-                                )
+                            emit_dot_seq(
+                                cells, mctx,
+                                [numeral_dots(mctx.profile, f"digit_lower_{ch}")],
+                                role="music_chord_symbol",
+                                source_text=f"{source_label}/{kind}",
                             )
                         else:
                             dots = mctx.profile.bare_letter(ch)
                             if dots is not None:
-                                cells.append(
-                                    BrailleCell(
-                                        dots=dots,
-                                        role="music_chord_symbol",
-                                        source_span=span,
-                                        source_text=_annotate_source_text(
-                                            f"{source_label}/{kind}", mctx,
-                                        ),
-                                    )
+                                emit_dot_seq(
+                                    cells, mctx, [dots],
+                                    role="music_chord_symbol",
+                                    source_text=f"{source_label}/{kind}",
                                 )
 
     # Bass note (chord-over-bass, "C/G" form).
@@ -255,15 +239,10 @@ def _emit_harmony(
             )
             bass_dots = mctx.profile.bare_letter(bass_step.lower())
             if bass_dots is not None:
-                cells.append(
-                    BrailleCell(
-                        dots=bass_dots,
-                        role="music_chord_symbol",
-                        source_span=span,
-                        source_text=_annotate_source_text(
-                            f"{source_label}/bass:{bass_step}", mctx,
-                        ),
-                    )
+                emit_dot_seq(
+                    cells, mctx, [bass_dots],
+                    role="music_chord_symbol",
+                    source_text=f"{source_label}/bass:{bass_step}",
                 )
             # Bass alter.
             bass_alter_raw = first_child_text(bass_elem, "bass-alter")

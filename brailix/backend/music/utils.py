@@ -8,6 +8,7 @@ unknown-cell fallback all live here so handler files stay narrow.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
 
 from brailix.backend.music.context import MusicBrailleContext
 from brailix.core.span import Span
@@ -182,6 +183,35 @@ def needs_octave_mark(
 # ---------------------------------------------------------------------------
 
 
+def emit_dot_seq(
+    cells: list[BrailleCell],
+    mctx: MusicBrailleContext,
+    seq: Sequence[tuple[int, ...]],
+    *,
+    role: str,
+    source_text: str | None,
+) -> None:
+    """Append one cell per dots in ``seq``, sharing the score span and the
+    part/measure-annotated source text.
+
+    The common tail of every synthesized cell-sequence emitter (key / time
+    signatures, word and tuplet markers, and the entity lookup) plus the
+    single-cell chord-symbol appends in :mod:`.handlers.harmony`, which pass
+    a one-element ``seq``.
+    """
+    span = mctx.span
+    annotated = _annotate_source_text(source_text, mctx)
+    for dots in seq:
+        cells.append(
+            BrailleCell(
+                dots=dots,
+                role=role,
+                source_span=span,
+                source_text=annotated,
+            )
+        )
+
+
 def emit_cells_for_entity(
     cells: list[BrailleCell],
     mctx: MusicBrailleContext,
@@ -207,17 +237,7 @@ def emit_cells_for_entity(
     seq = mctx.profile.music_cell(topic, entity)
     if seq is None:
         return False
-    span = mctx.span
-    annotated = _annotate_source_text(source_text, mctx)
-    for dots in seq:
-        cells.append(
-            BrailleCell(
-                dots=dots,
-                role=role,
-                source_span=span,
-                source_text=annotated,
-            )
-        )
+    emit_dot_seq(cells, mctx, seq, role=role, source_text=source_text)
     return True
 
 
@@ -381,17 +401,11 @@ def emit_synthesized_key_signature(
     seq: list[tuple[int, ...]] = [numeral_dots(profile, "number_sign")]
     seq.extend(_digits_upper(profile, abs(fifths)))
     seq.append(_accidental_dots(profile, sharp=fifths > 0))
-    span = mctx.span
-    annotated = _annotate_source_text(f"key:{fifths}", mctx)
-    for dots in seq:
-        cells.append(
-            BrailleCell(
-                dots=dots,
-                role="music_key_signature",
-                source_span=span,
-                source_text=annotated,
-            )
-        )
+    emit_dot_seq(
+        cells, mctx, seq,
+        role="music_key_signature",
+        source_text=f"key:{fifths}",
+    )
 
 
 def emit_synthesized_time_signature(
@@ -410,17 +424,11 @@ def emit_synthesized_time_signature(
     seq: list[tuple[int, ...]] = [numeral_dots(profile, "number_sign")]
     seq.extend(_digits_upper(profile, beats))
     seq.extend(_digits_lower(profile, beat_type))
-    span = mctx.span
-    annotated = _annotate_source_text(f"{beats}/{beat_type}", mctx)
-    for dots in seq:
-        cells.append(
-            BrailleCell(
-                dots=dots,
-                role="music_time_signature",
-                source_span=span,
-                source_text=annotated,
-            )
-        )
+    emit_dot_seq(
+        cells, mctx, seq,
+        role="music_time_signature",
+        source_text=f"{beats}/{beat_type}",
+    )
 
 
 def emit_synthesized_word(
@@ -450,17 +458,7 @@ def emit_synthesized_word(
             seq.append(dots)
     if with_period:
         seq.append(numeral_dots(profile, "abbreviation_period"))
-    span = mctx.span
-    annotated = _annotate_source_text(source_text or text, mctx)
-    for dots in seq:
-        cells.append(
-            BrailleCell(
-                dots=dots,
-                role=role,
-                source_span=span,
-                source_text=annotated,
-            )
-        )
+    emit_dot_seq(cells, mctx, seq, role=role, source_text=source_text or text)
 
 
 def emit_synthesized_tuplet_marker(
@@ -479,14 +477,8 @@ def emit_synthesized_tuplet_marker(
     seq: list[tuple[int, ...]] = [numeral_dots(profile, "tuplet_prefix")]
     seq.extend(_digits_lower(profile, n))
     seq.append(numeral_dots(profile, "abbreviation_period"))
-    span = mctx.span
-    annotated = _annotate_source_text(f"tuplet:{n}", mctx)
-    for dots in seq:
-        cells.append(
-            BrailleCell(
-                dots=dots,
-                role="music_tuplet",
-                source_span=span,
-                source_text=annotated,
-            )
-        )
+    emit_dot_seq(
+        cells, mctx, seq,
+        role="music_tuplet",
+        source_text=f"tuplet:{n}",
+    )
