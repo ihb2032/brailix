@@ -520,3 +520,16 @@ class TestSerializeValueHelper:
     def test_inline_node_delegates_to_to_dict(self):
         node = Number(surface="42")
         assert _serialize_value(node) == node.to_dict()
+
+
+class TestMalformedSpan:
+    def test_from_dict_rejects_malformed_span(self):
+        # A span round-trips as a 2-element list; a 3-element one is malformed
+        # and must raise at the IR boundary, not be stored raw as a list.
+        with pytest.raises(ValueError):
+            from_dict({"type": "number", "surface": "1", "span": [0, 1, 2]})
+
+    def test_from_dict_accepts_explicit_none_span(self):
+        # An explicit null span is allowed (to_dict omits it, from_dict keeps None).
+        node = from_dict({"type": "number", "surface": "1", "span": None})
+        assert node.span is None

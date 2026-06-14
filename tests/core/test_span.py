@@ -78,6 +78,24 @@ class TestSpanSerialization:
     def test_to_tuple_format(self):
         assert Span(3, 7).to_tuple() == (3, 7)
 
+    def test_from_tuple_accepts_json_list(self):
+        # JSON round-trips a span as a list, not a tuple.
+        assert Span.from_tuple([3, 7]) == Span(3, 7)
+
+    def test_from_tuple_rejects_wrong_length(self):
+        # The single canonical JSON-to-Span entry point must reject a malformed
+        # span loudly rather than silently truncating or smuggling it through.
+        with pytest.raises(ValueError):
+            Span.from_tuple([0, 1, 2])
+        with pytest.raises(ValueError):
+            Span.from_tuple([0])
+
+    def test_from_tuple_rejects_non_sequence(self):
+        with pytest.raises(ValueError):
+            Span.from_tuple(5)
+        with pytest.raises(ValueError):
+            Span.from_tuple(None)
+
 
 class TestMergeSpans:
     def test_empty_iterable_returns_none(self):

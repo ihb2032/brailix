@@ -71,7 +71,7 @@ class BrailleCell:
         return cls(
             dots=tuple(payload.get("dots", [])),
             role=payload.get("role"),
-            source_span=Span(int(span[0]), int(span[1])) if span else None,
+            source_span=Span.from_tuple(span) if span is not None else None,
             source_text=payload.get("source_text"),
         )
 

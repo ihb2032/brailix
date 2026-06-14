@@ -395,3 +395,9 @@ class TestRegistry:
     def test_block_from_dict_ignores_unknown_fields(self):
         b = block_from_dict({"type": "paragraph", "text": "x", "future": "y"})
         assert isinstance(b, Paragraph)
+
+    def test_block_from_dict_rejects_malformed_span(self):
+        # Block spans share the canonical Span.from_tuple boundary — a malformed
+        # length raises rather than being stored raw as a list.
+        with pytest.raises(ValueError):
+            block_from_dict({"type": "paragraph", "text": "x", "span": [0, 1, 2]})

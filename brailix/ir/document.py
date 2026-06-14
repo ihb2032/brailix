@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, fields
 from typing import Any, ClassVar
 
 from brailix.core.span import Span
-from brailix.ir.inline import InlineNode
+from brailix.ir.inline import InlineNode, _is_omittable
 from brailix.ir.inline import from_dict as inline_from_dict
 
 # ---------------------------------------------------------------------------
@@ -47,21 +47,12 @@ class Block:
             if f.name in ("id", "children", "text", "span"):
                 continue
             value = getattr(self, f.name)
-            default = f.default
-            if (
-                value is None
-                or value == default
-                # default_factory fields have default == MISSING, so skip
-                # any empty sequence (e.g. List.items / table rows) too.
-                or (isinstance(value, (list, tuple)) and not value)
-                # Structural IR fields (List.items / Table.rows /
-                # TableRow.cells) are serialised by the owning subclass's
-                # to_dict override, never the generic loop — emitting a raw
-                # IR object here would yield a payload that only explodes at
-                # json.dumps time. A forgotten override drops the field
-                # loudly-testably instead.
-                or _is_ir_payload(value)
-            ):
+            # Omit defaults / empties (shared with inline to_dict); and never
+            # emit a raw IR object — structural fields (List.items / Table.rows
+            # / TableRow.cells) are serialised by the owning subclass override,
+            # so a forgotten override drops the field loudly-testably rather
+            # than producing a payload that only explodes at json.dumps time.
+            if _is_omittable(value, f.default) or _is_ir_payload(value):
                 continue
             d[f.name] = value
         if self.text is not None:
@@ -316,8 +307,8 @@ def _deserialize_block_value(cls: type[Block], key: str, value: Any) -> Any:
     the parent field and the offending entry's type tag so the
     serializer / authoring tool can be fixed at the source.
     """
-    if key == "span" and isinstance(value, (list, tuple)) and len(value) == 2:
-        return Span(int(value[0]), int(value[1]))
+    if key == "span":
+        return None if value is None else Span.from_tuple(value)
     if key == "children" and isinstance(value, list):
         return [inline_from_dict(v) for v in value]
     if key == "items" and isinstance(value, list):

@@ -62,14 +62,7 @@ class InlineNode:
             if f.name in ("surface", "span"):
                 continue
             value = getattr(self, f.name)
-            if (
-                value is None
-                or value == f.default
-                # ``default_factory=list`` fields have ``f.default`` == MISSING
-                # (so the ``== f.default`` check misses an empty list); skip
-                # any empty sequence so they don't bloat the JSON.
-                or (isinstance(value, (list, tuple)) and not value)
-            ):
+            if _is_omittable(value, f.default):
                 continue
             d[f.name] = _serialize_value(value)
         return d
@@ -369,6 +362,21 @@ def _strip_xml_namespace(elem: ET.Element) -> ET.Element:
     return elem
 
 
+def _is_omittable(value: Any, default: Any) -> bool:
+    """True if ``value`` should be omitted from a ``to_dict`` payload: it is
+    ``None``, equal to its field ``default``, or an empty sequence.
+
+    (``default_factory`` list/tuple fields report ``default`` == MISSING, so the
+    equality check alone misses an empty list — the explicit empty-sequence test
+    covers them.) Shared by the inline and block ``to_dict`` field loops.
+    """
+    return (
+        value is None
+        or value == default
+        or (isinstance(value, (list, tuple)) and not value)
+    )
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, InlineNode):
         return value.to_dict()
@@ -384,33 +392,42 @@ def _serialize_value(value: Any) -> Any:
     return value
 
 
+# Maps each XML-tree field to (qualified field label, human format name) for the
+# "must be None / a <fmt> string / an ET.Element" error message.
+_XML_TREE_FIELDS: dict[str, tuple[str, str]] = {
+    "math": ("MathInline.math", "MathML"),
+    "score": ("MusicInline.score", "MusicXML"),
+}
+
+
+def _deserialize_xml_tree(key: str, value: Any) -> ET.Element | None:
+    """Deserialize a MathML / MusicXML tree field (``math`` / ``score``).
+
+    Accepts ``None`` (kept), a serialized XML string (re-parsed and namespace-
+    stripped at the IR boundary), or a pre-parsed :class:`ET.Element` (passed
+    through unchanged). Anything else raises :class:`ValueError` so a malformed
+    payload fails loudly instead of silently storing junk.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return _strip_xml_namespace(ET.fromstring(value))
+    if isinstance(value, ET.Element):
+        return value
+    field_label, fmt = _XML_TREE_FIELDS[key]
+    raise ValueError(
+        f"{field_label} must be None, a {fmt} string, or an ET.Element; "
+        f"got {type(value).__name__}"
+    )
+
+
 def _deserialize_value(key: str, value: Any) -> Any:
-    if key == "span" and isinstance(value, (list, tuple)) and len(value) == 2:
-        return Span(int(value[0]), int(value[1]))
+    if key == "span":
+        return None if value is None else Span.from_tuple(value)
     if key == "parts" and isinstance(value, list):
         return [from_dict(v) for v in value]
     if key == "number" and isinstance(value, dict):
         return from_dict(value)
-    if key == "math":
-        if value is None:
-            return None
-        if isinstance(value, str):
-            return _strip_xml_namespace(ET.fromstring(value))
-        if isinstance(value, ET.Element):
-            return value
-        raise ValueError(
-            "MathInline.math must be None, a MathML string, or an "
-            "ET.Element; got " + type(value).__name__
-        )
-    if key == "score":
-        if value is None:
-            return None
-        if isinstance(value, str):
-            return _strip_xml_namespace(ET.fromstring(value))
-        if isinstance(value, ET.Element):
-            return value
-        raise ValueError(
-            "MusicInline.score must be None, a MusicXML string, or an "
-            "ET.Element; got " + type(value).__name__
-        )
+    if key in ("math", "score"):
+        return _deserialize_xml_tree(key, value)
     return value

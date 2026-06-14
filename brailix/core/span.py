@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,9 +52,20 @@ class Span:
         return (self.start, self.end)
 
     @classmethod
-    def from_tuple(cls, value: tuple[int, int]) -> Span:
+    def from_tuple(cls, value: Any) -> Span:
+        """Build a Span from a 2-element ``[start, end]`` sequence — the shape
+        a span round-trips as, whether in JSON (a list) or in memory (a tuple).
+
+        Raises :class:`ValueError` on any other shape (wrong length, not a
+        sequence, non-int-coercible elements) so a malformed payload fails
+        loudly at the IR boundary instead of silently smuggling a non-Span into
+        a ``span`` field. This is the single canonical JSON-to-Span entry point;
+        the IR deserializers route every span through it.
+        """
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValueError(f"span must be a 2-element sequence; got {value!r}")
         start, end = value
-        return cls(start, end)
+        return cls(int(start), int(end))
 
 
 def merge_spans(spans: Iterable[Span]) -> Span | None:

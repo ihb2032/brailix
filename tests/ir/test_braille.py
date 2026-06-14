@@ -178,3 +178,15 @@ class TestBlankCell:
     def test_blank_cell_constant(self):
         assert BLANK_CELL.is_blank
         assert BLANK_CELL.role == "space"
+
+
+class TestMalformedSourceSpan:
+    def test_from_dict_rejects_malformed_source_span(self):
+        # source_span goes through the same canonical Span.from_tuple boundary;
+        # a malformed length must raise, not silently truncate to the first two.
+        with pytest.raises(ValueError):
+            BrailleCell.from_dict({"dots": [1], "source_span": [0, 1, 2]})
+
+    def test_from_dict_absent_source_span_is_none(self):
+        c = BrailleCell.from_dict({"dots": [1]})
+        assert c.source_span is None
