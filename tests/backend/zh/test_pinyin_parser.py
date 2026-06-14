@@ -217,3 +217,61 @@ class TestErPlace:
         assert p.initial == ""
         assert p.final == "er"
         assert p.tone == "2"
+
+
+class TestSyllabicNasal:
+    """Syllabic nasal interjections — front-ends spell 嗯/哼 as narrow
+    phonetic nasals (n/ng/hng); the parser aliases them to the conventional
+    braille syllable (en/heng) so they resolve to a real finals cell rather
+    than stripping to a bare initial with a silently-dropped rime."""
+
+    @pytest.mark.parametrize("syl,initial,final,tone", [
+        ("n2",  "",  "en",  "2"),   # 嗯 ń
+        ("n3",  "",  "en",  "3"),   # 嗯 ň
+        ("n4",  "",  "en",  "4"),   # 嗯 ǹ
+        ("ng2", "",  "en",  "2"),   # 嗯 ńg
+        ("ng4", "",  "en",  "4"),
+        ("hng", "h", "eng", ""),    # 哼 hng
+    ])
+    def test_nasal_aliases_to_conventional_syllable(self, syl, initial, final, tone):
+        p = parse_pinyin(syl)
+        assert p.initial == initial
+        assert p.final == final
+        assert p.tone == tone
+        # It carries a real final now, so it is NOT a syllabic-i empty final.
+        assert p.syllabic is False
+
+    def test_m_strips_to_bare_initial_non_syllabic(self):
+        # 呣 (m) has no conventional braille syllable: it strips to a bare
+        # initial with an empty, NON-syllabic final, so the backend warns
+        # rather than silently dropping the rime.
+        p = parse_pinyin("m2")
+        assert p.initial == "m"
+        assert p.final == ""
+        assert p.syllabic is False
+
+    def test_hm_strips_to_initial_plus_unmapped_final(self):
+        # 噷 (hm): h is a real initial, leaving final "m" which has no cell —
+        # the backend warns via the regular missing-final path.
+        p = parse_pinyin("hm")
+        assert p.initial == "h"
+        assert p.final == "m"
+        assert p.syllabic is False
+
+
+class TestSyllabicFlag:
+    """``syllabic`` marks only the deliberate syllabic-i empty final, so the
+    backend can tell it apart from a degenerate bare-initial empty final."""
+
+    @pytest.mark.parametrize(
+        "syl", ["zhi1", "chi1", "shi2", "ri4", "zi3", "ci2", "si4"]
+    )
+    def test_syllabic_i_sets_flag(self, syl):
+        p = parse_pinyin(syl)
+        assert p.final == ""
+        assert p.syllabic is True
+
+    @pytest.mark.parametrize("syl", ["ba1", "wo3", "yi1", "er2", "m2"])
+    def test_non_syllabic_i_clears_flag(self, syl):
+        p = parse_pinyin(syl)
+        assert p.syllabic is False

@@ -265,3 +265,60 @@ class TestUangUengDistinctFinals:
         assert _roles(cells) == ["zh_final", "zh_tone"]
         assert tuple(cells[0].dots) == (2, 5, 6)
         assert cells[1].dots == profile.tones["1"]
+
+
+class TestSyllabicNasalInterjections:
+    """Regression for the silent-rime-drop bug.
+
+    Front-ends spell 嗯 as ``n``/``ng`` and 哼 as ``hng`` (narrow phonetic
+    nasals), but Chinese braille writes 嗯 = en and 哼 = heng. The parser
+    aliases them so a real finals cell is emitted — previously 嗯 (n2)
+    silently produced only the bare initial-n cell with no warning at all.
+    呣 (m) has no conventional braille syllable, so it must surface a
+    MISSING_FINAL warning rather than drop the rime in silence.
+    """
+
+    def test_en_for_n2(self, ctx, profile):
+        # 嗯 ń — conventional braille syllable en, zero initial.
+        cells = translate_hanzi_char(
+            HanziChar(surface="嗯", reading="n2", span=Span(0, 1)),
+            ctx, profile,
+        )
+        assert _roles(cells) == ["zh_final", "zh_tone"]
+        assert cells[0].dots == profile.finals["en"]
+        assert cells[1].dots == profile.tones["2"]
+        # The rime is no longer dropped, so no missing-final warning fires.
+        assert not any(w.code == "MISSING_FINAL" for w in ctx.warnings)
+
+    def test_en_for_ng2(self, ctx, profile):
+        # 嗯 ńg — same conventional syllable en.
+        cells = translate_hanzi_char(
+            HanziChar(surface="嗯", reading="ng2", span=Span(0, 1)),
+            ctx, profile,
+        )
+        assert _roles(cells) == ["zh_final", "zh_tone"]
+        assert cells[0].dots == profile.finals["en"]
+
+    def test_heng_for_hng(self, ctx, profile):
+        # 哼 hng — conventional braille syllable heng (h + eng), no tone.
+        cells = translate_hanzi_char(
+            HanziChar(surface="哼", reading="hng", span=Span(0, 1)),
+            ctx, profile,
+        )
+        assert _roles(cells) == ["zh_initial", "zh_final"]
+        assert cells[0].dots == profile.initials["h"]
+        assert cells[1].dots == profile.finals["eng"]
+        assert not any(w.code == "MISSING_FINAL" for w in ctx.warnings)
+
+    def test_m2_warns_instead_of_silent_drop(self, ctx, profile):
+        # 呣 (m) has no conventional braille syllable — the empty,
+        # non-syllabic final must warn rather than silently disappear.
+        cells = translate_hanzi_char(
+            HanziChar(surface="呣", reading="m2", span=Span(0, 1)),
+            ctx, profile,
+        )
+        assert any(w.code == "MISSING_FINAL" for w in ctx.warnings)
+        # The initial cell still stands in for the syllable; the key
+        # property is that the dropped rime is now observable, not silent.
+        assert cells[0].role == "zh_initial"
+        assert cells[0].dots == profile.initials["m"]
