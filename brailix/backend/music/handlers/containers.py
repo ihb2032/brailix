@@ -201,6 +201,13 @@ def _emit_part(
             mctx.prev_pitch = None  # octave inference restarts per staff
             mctx.prev_value_category = None  # BANA Par. 2.4: fresh reading
             mctx.pending_hairpin = None  # a hairpin never spans a staff
+            # BANA Par. 9.2: each staff reads with its own clef. Reset so a
+            # staff that declares no clef of its own (e.g. an unnumbered
+            # <clef> that MusicXML assigns only to staff 1) falls back to
+            # the default written direction instead of inheriting the
+            # previous staff's clef and reading its chords upside down.
+            mctx.current_clef_sign = None
+            mctx.current_clef_line = None
             children = [
                 _measure_for_staff(c, staff) if c.tag == "measure" else c
                 for c in elem
