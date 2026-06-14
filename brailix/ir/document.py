@@ -60,6 +60,15 @@ class Block:
         if self.text is not None:
             d["text"] = self.text
         if self.children:
+            for c in self.children:
+                if not isinstance(c, InlineNode):
+                    raise TypeError(
+                        f"{type(self).__name__}.children expects InlineNode "
+                        f"entries; got {type(c).__name__}. Structural children "
+                        f"belong in items / cells / rows, not children — "
+                        f"block_from_dict rebuilds children via the inline "
+                        f"registry and cannot round-trip a block tag."
+                    )
             d["children"] = [c.to_dict() for c in self.children]
         if self.span is not None:
             d["span"] = list(self.span.to_tuple())

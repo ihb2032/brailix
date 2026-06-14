@@ -198,6 +198,17 @@ class TestTypedChildValidation:
         with pytest.raises(TypeError, match="TableCell"):
             block_from_dict(payload)
 
+    def test_block_children_with_block_entry_raises_on_to_dict(self):
+        # ``children`` is typed list[InlineNode]; a structural Block (e.g.
+        # ListItem) belongs in items/cells/rows. to_dict can serialise a
+        # block child (every Block has to_dict), but block_from_dict rebuilds
+        # children via the *inline* registry and would KeyError on the block
+        # tag — to_dict/from_dict would not be inverses. Reject at the source
+        # so the breakage surfaces where the bad tree is built, not on reload.
+        p = Paragraph(children=[ListItem(text="wrong")])
+        with pytest.raises(TypeError, match="InlineNode"):
+            p.to_dict()
+
 
 class TestSerializationAllBlocks:
     @pytest.mark.parametrize(
