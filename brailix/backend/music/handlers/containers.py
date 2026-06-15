@@ -159,13 +159,33 @@ def _emit_measures(
         _emit_element(cells, mctx, child)
 
 
+def _reset_part_reading_state(mctx: MusicBrailleContext) -> None:
+    """Reset the reading state that must restart at a part / staff boundary.
+
+    A part (BANA Par. 3.2.1) — and each staff stream of a multi-staff
+    part — starts a fresh octave context and a fresh value-sign baseline
+    (Par. 2.4), and never carries a hairpin across the boundary. The clef
+    (Par. 9.2) is reset too so a part / staff that declares no clef of its
+    own falls back to the default written direction instead of inheriting
+    the previous one and reading its chords upside down. Voice boundaries
+    *within* a measure reset only a subset (octave + value baseline — the
+    clef and accidentals hold across voices), so they don't call this.
+    """
+    mctx.prev_pitch = None
+    mctx.prev_value_category = None
+    mctx.pending_hairpin = None
+    mctx.current_clef_sign = None
+    mctx.current_clef_line = None
+
+
 def _emit_part(
     cells: list[BrailleCell], mctx: MusicBrailleContext, elem: ET.Element
 ) -> None:
     """Walk a part's measures.
 
-    A single-staff part emits straight through, each part starting a
-    fresh octave context (BANA Par. 3.2.1).  A multi-staff part (e.g. a
+    A single-staff part emits straight through, each part starting a fresh
+    octave context, value-sign baseline, and clef (BANA Par. 3.2.1 / 9.2 —
+    see :func:`_reset_part_reading_state`).  A multi-staff part (e.g. a
     piano with ``<staff>1`` right hand / ``<staff>2`` left hand) is split
     into one stream per staff, separated by ``music_part_sep`` so
     bar-over-bar layout aligns the hands as parallel parts (§29).  Each
@@ -184,9 +204,7 @@ def _emit_part(
     try:
         staves = _part_staves(elem)
         if not staves:
-            mctx.prev_pitch = None
-            mctx.prev_value_category = None  # BANA Par. 2.4: fresh reading
-            mctx.pending_hairpin = None  # a hairpin never spans a part
+            _reset_part_reading_state(mctx)
             _emit_measures(cells, mctx, list(elem), separator)
             return
         for i, staff in enumerate(staves):
@@ -198,16 +216,12 @@ def _emit_part(
                         source_span=mctx.span,
                     )
                 )
-            mctx.prev_pitch = None  # octave inference restarts per staff
-            mctx.prev_value_category = None  # BANA Par. 2.4: fresh reading
-            mctx.pending_hairpin = None  # a hairpin never spans a staff
-            # BANA Par. 9.2: each staff reads with its own clef. Reset so a
-            # staff that declares no clef of its own (e.g. an unnumbered
-            # <clef> that MusicXML assigns only to staff 1) falls back to
-            # the default written direction instead of inheriting the
-            # previous staff's clef and reading its chords upside down.
-            mctx.current_clef_sign = None
-            mctx.current_clef_line = None
+            # Each staff stream restarts octave / value / clef (see
+            # :func:`_reset_part_reading_state`): a staff that declares no
+            # clef of its own (e.g. an unnumbered <clef> that MusicXML
+            # assigns only to staff 1) must fall back to the default
+            # written direction, not inherit the previous staff's clef.
+            _reset_part_reading_state(mctx)
             children = [
                 _measure_for_staff(c, staff) if c.tag == "measure" else c
                 for c in elem
