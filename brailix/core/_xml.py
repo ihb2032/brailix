@@ -1,11 +1,14 @@
-"""Shared ElementTree helpers for the frontend normalizers.
+"""Shared ElementTree helpers — generic, format-independent.
 
-The MathML and MusicXML normalizers both parse a vendor string into an
-:class:`~xml.etree.ElementTree.Element` tree and then (a) drop XML
-namespaces so the backend can match bare local tags and (b) null out
-pure-whitespace ``text`` / ``tail`` nodes that confuse element
-iteration. Both steps are format-independent, so they live here once
-rather than in two near-identical copies.
+These tidy a parsed :class:`~xml.etree.ElementTree.Element` tree at a
+layer boundary: drop XML namespaces so a backend can match bare local
+tags, null out pure-whitespace ``text`` / ``tail`` nodes that confuse
+element iteration, and scrub characters illegal in XML 1.0 before a
+(possibly malformed) vendor string is echoed back into a soft-failure
+document. They depend only on the standard library, so they live in
+:mod:`brailix.core` — the frontend normalizers (MathML / MusicXML) and
+the input layer's docx converters both use them without either layer
+depending on the other.
 """
 
 from __future__ import annotations

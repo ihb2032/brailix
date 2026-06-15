@@ -25,6 +25,7 @@ def _register_builtin() -> None:
         mathml,
         mtef,
         omml,
+        script_cluster,
     )
 
     math_source_registry.register("mathml", mathml._load)
@@ -48,6 +49,15 @@ def _register_builtin() -> None:
     # teaching materials. Pure-stdlib; docx adapter extracts the
     # ``instrText`` string and hands it over.
     math_source_registry.register("eq_field", eq_field._load)
+    # Word super/subscript "formatted text" formula (x², H₂O typed as runs).
+    # Pure-stdlib; the docx adapter linearises the cluster and hands over a
+    # ``base ^{..} _{..}`` source string. ``script_cluster_chem`` is the same
+    # adapter with chemistry detection enabled — input selects the name from
+    # its ``chem_detection`` flag, the chemical judgment runs in the adapter.
+    math_source_registry.register("script_cluster", script_cluster._load)
+    math_source_registry.register(
+        "script_cluster_chem", script_cluster._load_chem
+    )
 
 
 _register_builtin()

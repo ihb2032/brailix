@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from brailix.frontend._xml import strip_namespace, strip_whitespace_text
+from brailix.core._xml import strip_namespace, strip_whitespace_text
 from brailix.frontend.math.utils import merror_wrap
 
 

@@ -1,9 +1,11 @@
 r"""Low-level XML helpers + OOXML namespace constants for the docx adapter.
 
 This is the leaf of the docx subpackage DAG — it imports nothing from
-its siblings (:mod:`._ole`, :mod:`._blocks`) and only depends on the
-shared :func:`brailix.frontend._xml.local_name` plus a lazy
-``math_source_registry`` import for the inline-math conversion.
+its siblings (:mod:`._ole`, :mod:`._blocks`) and depends only on neutral
+:mod:`brailix.core` helpers (:func:`brailix.core._xml.local_name` and the
+:mod:`brailix.core.inline_math` island codec). It imports no frontend at
+all: inline OMML is *deferred*, not converted here (see
+:func:`_inline_math_as_text`).
 
 Provides:
 
@@ -13,8 +15,10 @@ Provides:
 * Tag helpers (:func:`_local`, :func:`_first`, :func:`_first_local`).
 * Serialisation helpers (:func:`_serialize`, :func:`_flatten_xml`).
 * Inline-math wrapping (:func:`_wrap_inline_math` — the one place the
-  ``$...$`` markers are produced, with inner-``$`` escaping).
-* Inline OMML→MathML conversion (:func:`_inline_math_as_text`).
+  ``$<math>...</math>$`` markers are produced, with inner-``$`` escaping;
+  still used by the eagerly-decoded MTEF / script-cluster paths).
+* Inline OMML deferral (:func:`_inline_math_as_text` — emits a
+  source-tagged island for the frontend to convert).
 """
 
 from __future__ import annotations
@@ -22,7 +26,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from brailix.frontend._xml import local_name
+from brailix.core import inline_math
+from brailix.core._xml import local_name
 
 # python-docx exposes the underlying OOXML as :mod:`lxml.etree`
 # elements; we use lxml.tostring directly so OMML serialisation
@@ -54,7 +59,7 @@ _R_PREFIX = "{" + _R_NS + "}"
 
 def _local(tag: str) -> str:
     """Strip XML namespace from a tag name — shared
-    :func:`brailix.frontend._xml.local_name`."""
+    :func:`brailix.core._xml.local_name`."""
     return local_name(tag)
 
 
@@ -110,19 +115,18 @@ def _ns_attr(elem: Element, prefix: str, name: str) -> str | None:
 
 
 def _inline_math_as_text(omath: Element) -> str:
-    """Convert an inline ``<m:oMath>`` to ``$<math>...</math>$`` text.
+    """Encode an inline ``<m:oMath>`` as a deferred ``omml`` inline-math
+    island.
 
-    The OMML→MathML conversion happens here (lazy import to avoid
-    cycle with the math frontend during package init). The resulting
-    MathML is normalised to a single line — the segmenter's inline-math
-    regex rejects newlines, and Word emits a lot of incidental
-    whitespace between OMML tags.
+    The raw OMML is *not* converted here — it is serialised and wrapped
+    as a source-tagged island (:func:`brailix.core.inline_math.wrap`), so
+    the OMML→MathML conversion runs later in the frontend's math pass
+    (``Pipeline._attach_math``), exactly as a display ``MathBlock`` with
+    ``source="omml"`` defers. Keeping the conversion out of the input
+    layer is what lets this module take no math-frontend dependency; see
+    the docx ``__init__`` "Math handling" note and ARCHITECTURE §1.
     """
-    from brailix.frontend.math.registry import math_source_registry
-
-    omml_xml = _serialize(omath)
-    mathml = math_source_registry.get("omml").to_mathml(omml_xml)
-    return _wrap_inline_math(mathml)
+    return inline_math.wrap("omml", _serialize(omath))
 
 
 # Every inline-math island :func:`_wrap_inline_math` produces opens with

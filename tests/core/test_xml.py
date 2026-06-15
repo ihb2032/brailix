@@ -1,10 +1,10 @@
-"""Tests for the shared frontend XML helpers."""
+"""Tests for the shared core XML helpers (:mod:`brailix.core._xml`)."""
 
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from brailix.frontend._xml import (
+from brailix.core._xml import (
     local_name,
     strip_namespace,
     strip_whitespace_text,

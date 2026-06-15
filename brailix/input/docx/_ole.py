@@ -4,7 +4,14 @@ Word stores MathType / Microsoft Equation 3.0 formulas as
 ``Equation.DSMT4`` / ``Equation.3`` OLE objects. This module pulls the
 raw ``"Equation Native"`` MTEF stream out of the package and hands it
 to the MTEF source adapter, surfacing the result as inline
-``$<math>...</math>$`` text — the same form inline OMML uses.
+``$<math>...</math>$`` text.
+
+Unlike inline OMML / EQ fields — which defer to the frontend as raw
+source-tagged islands (:mod:`brailix.core.inline_math`) — MTEF is
+**binary** and cannot ride the text IR, so it is decoded here at the
+input boundary. That is the deliberate exception to the "text math
+defers" rule; see the package ``__init__`` "Math handling" note and
+ARCHITECTURE §1.
 
 DAG position: depends only on :mod:`._xml`. The python-docx / olefile
 imports stay lazy (inside function bodies) so this module imports

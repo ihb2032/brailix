@@ -2,8 +2,13 @@ r"""Body / paragraph / run / table walking for the docx adapter.
 
 Converts the OOXML ``w:body`` subtree into IR blocks: paragraphs,
 headings, lists, tables, and standalone display-math blocks. Inline
-math (OMML / OLE MathType / Word EQ fields) is surfaced as
-``$<math>...</math>$`` text embedded in the surrounding paragraph.
+math is surfaced as a text island embedded in the surrounding
+paragraph: inline OMML and Word EQ fields as *deferred* source-tagged
+islands (:mod:`brailix.core.inline_math`, converted later by the
+frontend's math pass), and OLE MathType (MTEF) as an eagerly-decoded
+``$<math>...</math>$`` island — MTEF is binary, which the text IR can't
+carry, so it is decoded at the input boundary. See the package
+``__init__`` "Math handling" note.
 
 DAG position: depends on :mod:`._xml` (tag / serialisation helpers and
 namespace constants) and :mod:`._ole` (OLE→inline-math extraction).
@@ -14,8 +19,8 @@ package ``__init__`` and call into here.
 from __future__ import annotations
 
 import re
-from xml.sax.saxutils import escape
 
+from brailix.core import inline_math
 from brailix.input.docx._ole import _ole_object_to_inline_math
 from brailix.input.docx._xml import (
     _INLINE_MATH_OPEN,
@@ -27,7 +32,6 @@ from brailix.input.docx._xml import (
     _local,
     _ns_attr,
     _serialize,
-    _wrap_inline_math,
 )
 from brailix.ir.document import (
     Block,
@@ -42,12 +46,6 @@ from brailix.ir.document import (
 )
 
 _HEADING_STYLE_RE = re.compile(r"^heading\s*(\d+)$", re.IGNORECASE)
-
-# Standard W3C MathML namespace — kept as a local literal (rather than
-# importing from the math frontend) so this leaf-ish walker stays free of
-# a frontend import cycle, matching ``_xml._inline_math_as_text``'s lazy
-# discipline. It's the same URI every MathML emitter in the project uses.
-_MATHML_NS = "http://www.w3.org/1998/Math/MathML"
 
 # Word lets a paragraph be a list item via either ``numPr`` (real
 # numbering with a definition) or just a list-flavoured pStyle (eg.
@@ -246,25 +244,27 @@ def _walk_paragraph_content(
     ``text_piece`` is the contribution to surrounding paragraph text
     (empty string when the unit is a standalone display block).
     ``math_block`` is non-None only for display equations
-    (``m:oMathPara`` children); inline ``m:oMath`` produces a text
-    piece carrying ``$<math>...</math>$``.
+    (``m:oMathPara`` children); inline ``m:oMath`` produces a text piece
+    carrying a deferred source-tagged inline-math island
+    (:mod:`brailix.core.inline_math`) the frontend converts later.
 
     ``<w:object>`` elements containing a MathType / Equation 3.0 OLE
-    object are extracted from ``ole_blobs`` and translated through the
-    MTEF adapter into the same ``$<math>...</math>$`` inline form, so
-    legacy formulas line up with native OMML ones downstream.
+    object are extracted from ``ole_blobs`` and — because MTEF is binary,
+    which the text IR can't carry — decoded through the MTEF adapter here
+    into an eager ``$<math>...</math>$`` island.
 
     Word EQ fields (``<w:fldChar begin>`` + ``<w:instrText>eq ...</w:instrText>``
     + ``<w:fldChar end>``) span multiple runs; an :class:`_FieldState`
     instance threads the in-flight ``instrText`` buffer across run
-    boundaries so the EQ adapter sees the complete instruction.
+    boundaries so the complete instruction is captured (and likewise
+    deferred, as an ``eq_field`` island).
 
     Runs carrying ``<w:vertAlign>`` (the super/subscript a user sets via
     Ctrl+Shift+= / Ctrl+=) are not text that can be flattened away: a
-    coalescing pass turns each maximal cluster of script-bearing runs
-    into the same ``$<math>...</math>$`` inline form (an ``<msup>`` /
-    ``<msub>`` tree). ``chem_detection`` additionally tries the chemistry
-    reading for clusters that match a chemical formula — see
+    coalescing pass turns each maximal cluster of script-bearing runs into
+    a linearised ``script_cluster`` island. Building the MathML and judging
+    whether the cluster is chemistry happen in the frontend adapter;
+    ``chem_detection`` only selects the chem-enabled source name — see
     :func:`_coalesce_script_clusters`.
     """
     if ole_blobs is None:
@@ -280,8 +280,9 @@ def _iter_paragraph_tokens(p: Element, ole_blobs: dict[str, bytes]):
 
     * ``("text", str, vert)``  — run text, ``vert`` ∈ ``{None, "super",
       "sub"}`` from the run's ``<w:vertAlign>``;
-    * ``("math", "$<math>...$")`` — an already-formed inline-math island
-      (OMML / OLE / EQ field), opaque to script coalescing;
+    * ``("math", str)`` — an already-formed inline-math island, opaque to
+      script coalescing: a deferred source-tagged island (inline OMML / EQ
+      field) or an eager ``$<math>...$`` one (OLE MTEF);
     * ``("block", MathBlock)`` — a standalone display equation.
 
     This is the old body of :func:`_walk_paragraph_content`, re-expressed
@@ -365,19 +366,11 @@ def _iter_paragraph_tokens(p: Element, ole_blobs: dict[str, bytes]):
 _VERT_ALIGN = {"superscript": "super", "subscript": "sub"}
 
 # Half-width operators that may glue a formula together inside a script
-# cluster. ``-`` is canonicalised to the real minus (U+2212) so the math
-# backend's symbol table matches — a raw hyphen-minus surfaces as
-# MATH_UNKNOWN_SYMBOL (the same canonicalisation the prose ``math_op``
-# path in ``frontend/normalize`` applies).
-_CLUSTER_OP_CANON = {"-": "−"}
+# cluster — the cluster alphabet, alongside ASCII alphanumerics. Operator
+# canonicalisation and the cluster → MathML build (with chemistry detection)
+# now live in the frontend ``script_cluster`` adapter; this layer only
+# gathers the cluster and linearises it.
 _CLUSTER_OPS = frozenset("+-()[]")
-
-# Physical-state labels a chemical formula may carry, used only to give the
-# conservative chemistry detector a stronger signal (see _looks_like_chem).
-_CHEM_STATE_TOKENS = ("s", "l", "g", "aq")
-
-# Real element symbols come from the chem adapter's grammar at call time
-# (lazy, to avoid a frontend import cycle); see _looks_like_chem.
 
 
 def _run_vert_align(r: Element) -> str | None:
@@ -399,9 +392,17 @@ def _run_vert_align(r: Element) -> str | None:
 
 
 def _is_inline_math(piece: str) -> bool:
-    """True for an already-formed ``$<math>...</math>$`` inline-math piece
-    (so the coalescer treats it as an opaque island, never script text)."""
-    return piece.startswith(_INLINE_MATH_OPEN) and piece.endswith("$")
+    """True for an already-formed inline-math island (so the coalescer
+    treats it as an opaque unit, never script text).
+
+    Covers both forms a paragraph token can carry: a deferred
+    source-tagged island (inline OMML / EQ field, converted later by the
+    frontend) and the eagerly-built ``$<math>...</math>$`` form still used
+    by the MTEF / script-cluster paths.
+    """
+    return inline_math.is_tagged(piece) or (
+        piece.startswith(_INLINE_MATH_OPEN) and piece.endswith("$")
+    )
 
 
 def _is_cluster_char(ch: str) -> bool:
@@ -415,7 +416,7 @@ def _is_cluster_char(ch: str) -> bool:
 def _coalesce_script_clusters(tokens, *, chem_detection: bool = False):
     """Turn the token stream from :func:`_iter_paragraph_tokens` back into
     ``(text_piece, math_block)`` pairs, folding every cluster of
-    script-bearing run text into one ``$<math>...</math>$`` island.
+    script-bearing run text into one deferred ``script_cluster`` island.
 
     Consecutive ``text`` tokens accumulate; an inline-math island or a
     display block flushes them. Flushing renders the buffered text,
@@ -513,128 +514,31 @@ def _render_text_with_scripts(
 def _cluster_to_inline_math(
     run: list[tuple[str, str | None]], *, chem_detection: bool
 ) -> str:
-    """Convert one script cluster to a ``$<math>...</math>$`` string.
+    """Encode one Word script cluster as a deferred inline-math island.
 
-    With ``chem_detection`` on, a cluster that reads as a chemical formula
-    is routed through the chem adapter (tagging ``data-bk-chem``); anything
-    else — and every cluster when detection is off — becomes a plain
-    ``<msup>`` / ``<msub>`` math tree. Either way the downstream pipeline
-    is untouched: it's the same inline-math channel OMML already uses.
+    The cluster — formatted-text sub/superscripts like ``x²`` / ``H₂O`` — is
+    *linearised* to a compact ``base ^{..} _{..}`` source string and wrapped
+    as a source-tagged island (:mod:`brailix.core.inline_math`). Building the
+    MathML, and judging whether the cluster is chemistry, is the frontend's
+    job: the ``script_cluster`` adapter does it later (ARCHITECTURE §1). The
+    ``chem_detection`` *config* selects the source name; the chemical
+    *judgment* itself runs in the adapter, not here.
     """
-    if chem_detection:
-        chem = _cluster_as_chem(run)
-        if chem is not None:
-            return _wrap_inline_math(chem)
-    inner = _scripts_to_mathml(run)
-    mathml = f'<math xmlns="{_MATHML_NS}">{inner}</math>'
-    return _wrap_inline_math(mathml)
+    source = "script_cluster_chem" if chem_detection else "script_cluster"
+    return inline_math.wrap(source, _linearise_cluster(run))
 
 
-def _scripts_to_mathml(run: list[tuple[str, str | None]]) -> str:
-    """Build the inner MathML for a cluster of ``(char, vert)`` atoms.
+def _linearise_cluster(run: list[tuple[str, str | None]]) -> str:
+    """Linearise a script cluster to a ``base ^{..} _{..}`` source string.
 
-    Walks left to right: a baseline atom (one ``<mi>`` per letter, one
-    ``<mn>`` per digit run, one ``<mo>`` per operator) absorbs the
-    immediately following super/subscript run(s) into an ``<msup>`` /
-    ``<msub>`` / ``<msubsup>``. A leading script with no base (rare) is
-    emitted as a plain atom so no character is dropped.
+    Baseline characters pass through; a maximal superscript run becomes
+    ``^{...}`` and a subscript run ``_{...}``. The cluster alphabet (ASCII
+    alphanumerics plus ``+-()[]``) never contains ``^`` / ``_`` / ``{`` /
+    ``}``, so no escaping is needed and the frontend ``script_cluster``
+    adapter parses it back unambiguously.
     """
-    atoms: list[str] = []
-    i = 0
-    n = len(run)
-    while i < n:
-        _ch, vert = run[i]
-        if vert is not None:
-            content, i = _read_script_run(run, i, vert)
-            atoms.append(content)
-            continue
-        base, i = _read_base_atom(run, i)
-        sup = sub = None
-        while i < n and run[i][1] is not None:
-            kind = run[i][1]
-            content, i = _read_script_run(run, i, kind)
-            if kind == "super":
-                sup = content if sup is None else f"<mrow>{sup}{content}</mrow>"
-            else:
-                sub = content if sub is None else f"<mrow>{sub}{content}</mrow>"
-        if sup is not None and sub is not None:
-            atoms.append(f"<msubsup>{base}{sub}{sup}</msubsup>")
-        elif sup is not None:
-            atoms.append(f"<msup>{base}{sup}</msup>")
-        elif sub is not None:
-            atoms.append(f"<msub>{base}{sub}</msub>")
-        else:
-            atoms.append(base)
-    return "".join(atoms)
-
-
-def _read_base_atom(run: list[tuple[str, str | None]], i: int) -> tuple[str, int]:
-    """Read one baseline atom at ``i``: a whole digit run as ``<mn>``, a
-    single letter as ``<mi>``, or one operator as ``<mo>`` (so a trailing
-    script binds to the last letter, ``xy²`` = x·y²)."""
-    ch, _ = run[i]
-    if ch.isdigit():
-        j = i
-        while j < len(run) and run[j][1] is None and run[j][0].isdigit():
-            j += 1
-        digits = "".join(c for c, _ in run[i:j])
-        return f"<mn>{digits}</mn>", j
-    if ch.isalpha():
-        return f"<mi>{escape(ch)}</mi>", i + 1
-    return f"<mo>{escape(_CLUSTER_OP_CANON.get(ch, ch))}</mo>", i + 1
-
-
-def _read_script_run(
-    run: list[tuple[str, str | None]], i: int, kind: str | None
-) -> tuple[str, int]:
-    """Read the maximal run of chars whose vert equals ``kind`` and return
-    its MathML wrapped in an ``<mrow>`` (the normalizer collapses a
-    single-child mrow, so this always gives ``<msup>`` / ``<msub>`` exactly
-    two children)."""
-    j = i
-    while j < len(run) and run[j][1] == kind:
-        j += 1
-    inner = _scripts_to_mathml([(c, None) for c, _ in run[i:j]])
-    return f"<mrow>{inner}</mrow>", j
-
-
-def _cluster_as_chem(run: list[tuple[str, str | None]]) -> str | None:
-    """Return chemistry MathML for ``run`` if it conservatively reads as a
-    chemical formula, else ``None`` (so the caller falls back to math).
-
-    The cluster is linearised to ``\\ce``-style text (subscript digits
-    inline, a super run as a ``^{...}`` charge) and handed to the chem
-    adapter, which owns the grammar. A clean parse plus a chemical
-    *signature* (a multi-letter element, two or more elements, a charge, or
-    a state label) is required, so a lone single-letter variable subscript
-    (``V₁``, ``S₂``) stays math. See the memory on single-element ambiguity.
-    """
-    linear = _linearise_for_chem(run)
-    if linear is None:
-        return None
-    from brailix.frontend.math.adapters import chem as _chem
-
-    mathml = _chem.convert_ce(linear)
-    if "<merror" in mathml:
-        return None
-    if not _has_chem_signature(linear):
-        return None
-    return mathml
-
-
-def _linearise_for_chem(run: list[tuple[str, str | None]]) -> str | None:
-    """Linearise a cluster to ``\\ce`` text, or ``None`` if it can't be a
-    formula.
-
-    Baseline chars pass through verbatim (element letters / groups); a
-    subscript run must be digits — a chemical count — and is inlined
-    (``H`` ``2`` ``O`` → ``H2O``); a superscript run must be charge-shaped
-    (digits then a required ``+`` / ``-``) and becomes ``^{...}``. A
-    non-digit subscript (``H_i``) or a bare-exponent superscript (``x²``)
-    returns ``None`` so the caller keeps the math reading."""
     parts: list[str] = []
-    i = 0
-    n = len(run)
+    i, n = 0, len(run)
     while i < n:
         ch, vert = run[i]
         if vert is None:
@@ -645,32 +549,9 @@ def _linearise_for_chem(run: list[tuple[str, str | None]]) -> str | None:
         while j < n and run[j][1] == vert:
             j += 1
         chunk = "".join(c for c, _ in run[i:j])
-        if vert == "sub":
-            if not chunk.isdigit():
-                return None
-            parts.append(chunk)
-        else:  # super → must be a charge, not an exponent
-            if not re.fullmatch(r"\d*[+-]", chunk):
-                return None
-            parts.append("^{" + chunk + "}")
+        parts.append(("^{" if vert == "super" else "_{") + chunk + "}")
         i = j
     return "".join(parts)
-
-
-def _has_chem_signature(linear: str) -> bool:
-    """True when the linearised cluster shows evidence it's really chemistry
-    and not a coincidental single element letter: a multi-letter element, two
-    or more elements, a charge (``^``), or a physical-state label."""
-    from brailix.frontend.math.adapters.chem import find_elements
-
-    elements = find_elements(linear)
-    if any(len(e) >= 2 for e in elements):
-        return True
-    if len(elements) >= 2:
-        return True
-    if "^" in linear:
-        return True
-    return any(f"({t})" in linear for t in _CHEM_STATE_TOKENS)
 
 
 # ---------------------------------------------------------------------------
@@ -742,13 +623,16 @@ class _FieldState:
 
 
 def _eq_field_to_inline_math(instr: str) -> str | None:
-    """Parse ``instr`` as an EQ field, return ``$<math>...</math>$`` text.
+    """Encode an EQ field ``instr`` as a deferred ``eq_field`` island.
 
-    Returns ``None`` for non-EQ fields (HYPERLINK, PAGE, TOC, …) so
-    the caller can skip them silently. The EQ adapter itself wraps
-    parse failures in ``<merror>`` rather than raising, so even
-    malformed equations come back as inline math (the backend will
-    surface a MATH_ERROR warning).
+    Returns ``None`` for non-EQ fields (HYPERLINK, PAGE, TOC, …) so the
+    caller can skip them silently. The "is this an EQ field?" gate stays
+    here (input-side), but the EQ→MathML conversion is *deferred*: the
+    raw instruction is wrapped as a source-tagged island
+    (:func:`brailix.core.inline_math.wrap`) for the frontend's math pass
+    to convert, so this module takes no math-frontend dependency. The EQ
+    adapter wraps its own parse failures in ``<merror>``, so a malformed
+    equation still surfaces as inline math (with a MATH_ERROR warning).
     """
     text = instr.strip()
     if not text:
@@ -757,10 +641,7 @@ def _eq_field_to_inline_math(instr: str) -> str | None:
     head = text.split(None, 1)[0].lower()
     if head != "eq":
         return None
-    from brailix.frontend.math.registry import math_source_registry
-
-    mathml = math_source_registry.get("eq_field").to_mathml(text)
-    return _wrap_inline_math(mathml)
+    return inline_math.wrap("eq_field", text)
 
 
 def _walk_run(
@@ -1060,13 +941,12 @@ def _convert_table_cell(
             )
             for blk in paragraph_blocks:
                 if isinstance(blk, MathBlock):
-                    # Surface OMML as inline math by round-tripping through
-                    # the same ``$<math>...</math>$`` form used for inline
-                    # equations. Tables are visually constrained — display
-                    # math doesn't fit anyway.
-                    from brailix.frontend.math.registry import math_source_registry
-                    mathml = math_source_registry.get("omml").to_mathml(blk.text or "")
-                    parts.append(_wrap_inline_math(mathml))
+                    # Fold a display MathBlock into the cell as inline math:
+                    # tables are visually constrained, display math doesn't
+                    # fit. Deferred like every other inline OMML — emit a
+                    # source-tagged island (carrying the block's own source
+                    # dialect) for the frontend's math pass to convert.
+                    parts.append(inline_math.wrap(blk.source, blk.text or ""))
                 else:
                     parts.append(blk.text or "")
         elif tag == "tbl":

@@ -93,6 +93,14 @@ Each layer answers exactly one question:
 | Backend | how the rules write it in braille |
 | Renderer | what bytes it becomes |
 
+**The input/frontend boundary.** Input answers only "what blocks does this document have, and where is the raw content": it cracks open containers (the `.docx` OOXML and OLE, the `.mxl` ZIP), picks a parser by file identity (suffix or content sniff), and yields a `DocumentIR` of block structure with inline content still raw text. Frontend answers "what each inline region is": it translates a known source dialect (LaTeX, MathML, OMML, MTEF, MIDI, ...) into normalized IR (a MathML or MusicXML tree), picking an adapter by context and soft-failing to `<merror>` / `<music-error>`. Both parse source formats; the dividing line is **payload shape**, not timing:
+
+1. A **text** dialect (OMML, Word EQ field, LaTeX, ABC) is kept raw in the input layer and deferred to the frontend — block-level as `MathBlock(source=...)`, inline as a source-tagged `$...$` island (`brailix.core.inline_math`) embedded in `Block.text`. Both are converted by the frontend's `parse_math_tree` (via `Pipeline._attach_math` / `_populate_math_block`).
+2. A **binary** dialect (MathType MTEF, MIDI, the `.mxl` ZIP) is decoded at the input boundary, because the text IR carries no binary payload. This is the deliberate exception to the rule, not an asymmetry.
+3. **Self-synthesized MathML** (an `<msup>` / `<msub>` tree reconstructed from Word super/subscript formatting) is not a foreign dialect at all, so the input layer builds the tree directly.
+
+So the input layer imports no math/music source registry from the frontend (except the one binary-decode site), and the dependency is strictly one-way: the frontend never imports the input layer.
+
 A document flows top to bottom. The input layer turns any source into one `DocumentIR` whose blocks still hold raw text. The frontend detects inline regions, tags numbers, dates, and units, and routes each region down its own track. An IR builder merges everything into a complete `DocumentIR`, an IR validator checks structural validity, and the backend dispatches each node by type to a translator. The renderer then lays out and encodes the resulting cells, alongside a `WarningCollector`. Two properties of that flow matter most:
 
 - **Each kind of content keeps its own track.** Chinese segmentation runs only on Chinese regions, and pinyin runs only on Chinese tokens, so `2026`, `x^2`, and `CPU` are never pushed through the Chinese path. Numbers, formulae, and English are protected back at the segmentation stage and reach the backend with their native structure intact.

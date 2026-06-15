@@ -10,6 +10,7 @@ the adapter is gated on the ``docx`` extras group.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ pytest.importorskip("lxml")
 from docx import Document  # noqa: E402
 from lxml import etree  # noqa: E402
 
+from brailix.core import inline_math  # noqa: E402
 from brailix.input.docx import parse_doc, parse_docx  # noqa: E402
 from brailix.ir.document import (  # noqa: E402
     Heading,
@@ -35,6 +37,35 @@ _M_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 _O_NS = "urn:schemas-microsoft-com:office:office"
 _R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+_INLINE_ISLAND_RE = re.compile(r"\$[^$\n]+\$")
+
+
+def _inline_math_islands(text: str) -> list[str]:
+    """Every inline-math island (a ``$...$`` region) in ``text`` — deferred
+    source-tagged islands (inline OMML / EQ field) and eager
+    ``$<math>...$`` ones (MTEF / script clusters) alike."""
+    return _INLINE_ISLAND_RE.findall(text)
+
+
+def _island_mathml(island: str) -> str:
+    """MathML the frontend builds from a deferred tagged ``island``.
+
+    Inline OMML / EQ math is no longer converted in the input layer; it
+    travels as a source-tagged island that the frontend's math pass turns
+    into a tree (exactly as ``Pipeline._attach_math`` does). Running that
+    same conversion here lets a docx test assert the resulting MathML and
+    so prove deferral is lossless.
+    """
+    import xml.etree.ElementTree as ET
+
+    from brailix.core.context import MathContext
+    from brailix.frontend.math import parse_math_tree
+
+    source, payload = inline_math.unwrap(island)
+    tree = parse_math_tree(payload, MathContext(source=source))
+    return "" if tree is None else ET.tostring(tree, encoding="unicode")
 
 
 class TestResolveDocConverter:
@@ -362,8 +393,8 @@ class TestMath:
         self, tmp_path: Path
     ) -> None:
         # Inline ``m:oMath`` (no ``m:oMathPara`` wrapper) stays in the
-        # paragraph; the docx adapter swaps it for ``$<math>...</math>$``
-        # so the segmenter recognises it as inline math.
+        # paragraph as a deferred source-tagged ``omml`` island, so the
+        # frontend converts it later; the segmenter still sees it as ``$...$``.
         path, doc = _make_docx(tmp_path)
         para = doc.add_paragraph("公式 ")
         para._p.append(_omml_fragment(
@@ -383,7 +414,12 @@ class TestMath:
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "公式" in joined
         assert "是平方" in joined
-        assert "$<math" in joined and "</math>$" in joined
+        # Deferred: one tagged ``omml`` island carrying the raw OMML, which
+        # the frontend converts to ``<msup>`` — not pre-converted here.
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 1 and inline_math.is_tagged(islands[0])
+        assert inline_math.unwrap(islands[0])[0] == "omml"
+        assert "<msup>" in _island_mathml(islands[0])
 
 
 # ---------------------------------------------------------------------------
@@ -736,7 +772,10 @@ class TestAlternateContent:
 
         text = _para_text(parse_docx(path))
         assert "式" in text
-        assert "$<math" in text and "<msup>" in text
+        # The Choice's inline OMML is deferred, like any other inline OMML.
+        islands = _inline_math_islands(text)
+        assert len(islands) == 1 and inline_math.unwrap(islands[0])[0] == "omml"
+        assert "<msup>" in _island_mathml(islands[0])
 
 
 # ---------------------------------------------------------------------------
@@ -805,10 +844,13 @@ class TestEqField:
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "分数" in joined
         assert "是二分之一" in joined
-        assert "$<math" in joined and "</math>$" in joined
-        assert "<mfrac>" in joined
-        assert "<mn>1</mn>" in joined
-        assert "<mn>2</mn>" in joined
+        # Deferred: one tagged ``eq_field`` island; the frontend converts it.
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 1 and inline_math.unwrap(islands[0])[0] == "eq_field"
+        mathml = _island_mathml(islands[0])
+        assert "<mfrac>" in mathml
+        assert "<mn>1</mn>" in mathml
+        assert "<mn>2</mn>" in mathml
 
     def test_piecewise_function_from_problem_15(self, tmp_path: Path) -> None:
         # The actual EQ field text from ``周练习6-5.4学生版.docx`` problem
@@ -830,14 +872,17 @@ class TestEqField:
         # Surrounding Chinese text survived.
         assert "f(x)＝" in joined
         assert "解集" in joined
-        # Two inline math spans — the piecewise function and the 1/2.
-        assert joined.count("$<math") == 2
+        # Two deferred eq_field islands — the piecewise function and the 1/2.
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 2
+        assert all(inline_math.unwrap(i)[0] == "eq_field" for i in islands)
+        mathml = "".join(_island_mathml(i) for i in islands)
         # Piecewise: left brace, no right brace, mtable with 2 rows.
-        assert '<mo fence="true">{</mo>' in joined
-        assert '<mo fence="true">}</mo>' not in joined
-        assert "<mtable" in joined
+        assert '<mo fence="true">{</mo>' in mathml
+        assert '<mo fence="true">}</mo>' not in mathml
+        assert "<mtable" in mathml
         # The fraction.
-        assert "<mfrac>" in joined
+        assert "<mfrac>" in mathml
 
     def test_cached_result_is_dropped(self, tmp_path: Path) -> None:
         # When a field has a ``separate`` + cached result, the result
@@ -855,7 +900,9 @@ class TestEqField:
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "CACHED_RESULT_TEXT" not in joined
-        assert "<mfrac>" in joined
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 1
+        assert "<mfrac>" in _island_mathml(islands[0])
 
     def test_non_eq_field_is_skipped_silently(self, tmp_path: Path) -> None:
         # HYPERLINK / PAGE / TOC and the rest of Word's non-equation
@@ -895,8 +942,9 @@ class TestEqField:
         result = parse_docx(path)
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
-        assert "$<math" in joined
-        assert "<mfrac>" in joined
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 1 and inline_math.unwrap(islands[0])[0] == "eq_field"
+        assert "<mfrac>" in _island_mathml(islands[0])
 
 
 # ---------------------------------------------------------------------------
@@ -1112,8 +1160,10 @@ class TestMathTypeFallback:
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "修复后" in joined
-        # The fallback path swapped the bad OLE for a valid OMML.
-        assert "<msup>" in joined
+        # The fallback path swapped the bad OLE for a valid OMML, now a
+        # deferred island that the frontend converts to ``<msup>``.
+        islands = _inline_math_islands(joined)
+        assert islands and "<msup>" in _island_mathml(islands[-1])
         assert "merror" not in joined
 
     def test_auto_mode_retries_when_equation_ole_vanishes_silently(
@@ -1209,19 +1259,19 @@ class TestMathTypeFallback:
         result = parse_docx(path)
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
-        # The wrappers are the only raw dollars; the inner one is the
-        # XML character reference.
+        # The island's two wrappers are the only raw dollars; the inner one
+        # is escaped inside the tagged payload, so it can't terminate the
+        # ``$...$`` span early.
         assert joined.count("$") == 2
-        assert "&#36;" in joined
-        start = joined.find("$<math")
-        end = joined.find("</math>$")
-        assert 0 <= start < end
-        # The reference round-trips to a real dollar when the span's
-        # MathML is re-parsed.
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 1 and inline_math.is_tagged(islands[0])
+        # The literal ``$`` round-trips: ``unwrap`` restores it in the raw
+        # payload, and it survives into the converted MathML's text.
         import xml.etree.ElementTree as ET
 
-        inner = joined[start + 1 : end + len("</math>")]
-        tree = ET.fromstring(inner)
+        source, payload = inline_math.unwrap(islands[0])
+        assert source == "omml" and "a$b" in payload
+        tree = ET.fromstring(_island_mathml(islands[0]))
         assert "$" in "".join(tree.itertext())
 
     def test_auto_mode_swallows_libreoffice_unavailable(
@@ -1370,9 +1420,11 @@ class TestVertAlignScripts:
         _append_script_runs(para, [("x", None), ("2", "superscript")])
         doc.save(path)
         text = _para_text(parse_docx(path))
-        assert "$<math" in text and "</math>$" in text
-        assert "<msup>" in text
-        assert "<mi>x</mi>" in text and "<mn>2</mn>" in text
+        # Deferred: the cluster is a linearised ``script_cluster`` island the
+        # frontend converts to ``<msup>`` — input builds no MathML itself.
+        mathml = _island_mathml(_inline_math_islands(text)[0])
+        assert "<msup>" in mathml
+        assert "<mi>x</mi>" in mathml and "<mn>2</mn>" in mathml
 
     def test_subscript_becomes_msub(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)
@@ -1382,11 +1434,12 @@ class TestVertAlignScripts:
         )
         doc.save(path)
         text = _para_text(parse_docx(path))
-        assert "<msub>" in text
-        assert "<mi>H</mi>" in text and "<mn>2</mn>" in text
-        assert "<mi>O</mi>" in text
+        mathml = _island_mathml(_inline_math_islands(text)[0])
+        assert "<msub>" in mathml
+        assert "<mi>H</mi>" in mathml and "<mn>2</mn>" in mathml
+        assert "<mi>O</mi>" in mathml
         # chemistry detection is off by default → plain math, no chem tag.
-        assert "data-bk-chem" not in text
+        assert "data-bk-chem" not in mathml
 
     def test_prose_around_script_stays_prose(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)
@@ -1397,18 +1450,19 @@ class TestVertAlignScripts:
         doc.save(path)
         text = _para_text(parse_docx(path))
         assert "面积是" in text and "平方米" in text
-        assert "$<math" in text
+        islands = _inline_math_islands(text)
+        assert len(islands) == 1
         # The surrounding Chinese must not be swallowed into the math island.
-        island = text[text.index("$<math"):text.index("</math>$")]
-        assert "面积" not in island and "平方" not in island
+        assert "面积" not in islands[0] and "平方" not in islands[0]
+        assert "<msup>" in _island_mathml(islands[0])
 
     def test_unit_superscript(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)  # m² — square metre
         para = doc.add_paragraph()
         _append_script_runs(para, [("m", None), ("2", "superscript")])
         doc.save(path)
-        text = _para_text(parse_docx(path))
-        assert "<msup>" in text and "<mi>m</mi>" in text
+        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path)))[0])
+        assert "<msup>" in mathml and "<mi>m</mi>" in mathml
 
     def test_subscript_then_superscript_is_msubsup(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)
@@ -1417,7 +1471,8 @@ class TestVertAlignScripts:
             para, [("x", None), ("1", "subscript"), ("2", "superscript")]
         )
         doc.save(path)
-        assert "<msubsup>" in _para_text(parse_docx(path))
+        islands = _inline_math_islands(_para_text(parse_docx(path)))
+        assert "<msubsup>" in _island_mathml(islands[0])
 
     def test_negative_exponent_uses_canonical_minus(self, tmp_path: Path) -> None:
         # 10⁻³ — the hyphen-minus is canonicalised to U+2212 so the math
@@ -1428,8 +1483,8 @@ class TestVertAlignScripts:
             para, [("10", None), ("-", "superscript"), ("3", "superscript")]
         )
         doc.save(path)
-        text = _para_text(parse_docx(path))
-        assert "<msup>" in text and "−" in text and "<mn>3</mn>" in text
+        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path)))[0])
+        assert "<msup>" in mathml and "−" in mathml and "<mn>3</mn>" in mathml
 
     def test_plain_text_without_vertalign_unchanged(self, tmp_path: Path) -> None:
         # Regression: ordinary "H2O" (no vertAlign) must NOT become math.
@@ -1492,8 +1547,8 @@ class TestVertAlignChemistry:
             para, [("H", None), ("2", "subscript"), ("O", None)]
         )
         doc.save(path)
-        text = _para_text(parse_docx(path))
-        assert "data-bk-chem" not in text and "<msub>" in text
+        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path)))[0])
+        assert "data-bk-chem" not in mathml and "<msub>" in mathml
 
     def test_on_h2o_tagged_chem(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)
@@ -1503,7 +1558,7 @@ class TestVertAlignChemistry:
         )
         doc.save(path)
         text = _para_text(parse_docx(path, chem_detection=True))
-        assert 'data-bk-chem="1"' in text
+        assert 'data-bk-chem="1"' in _island_mathml(_inline_math_islands(text)[0])
 
     def test_single_letter_variable_stays_math(self, tmp_path: Path) -> None:
         # V₁ — vanadium IS an element, but a lone single-letter subscript is
@@ -1512,16 +1567,20 @@ class TestVertAlignChemistry:
         para = doc.add_paragraph()
         _append_script_runs(para, [("V", None), ("1", "subscript")])
         doc.save(path)
-        text = _para_text(parse_docx(path, chem_detection=True))
-        assert "data-bk-chem" not in text and "<msub>" in text
+        mathml = _island_mathml(
+            _inline_math_islands(_para_text(parse_docx(path, chem_detection=True)))[0]
+        )
+        assert "data-bk-chem" not in mathml and "<msub>" in mathml
 
     def test_lowercase_base_stays_math(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)  # x² — x isn't an element symbol
         para = doc.add_paragraph()
         _append_script_runs(para, [("x", None), ("2", "superscript")])
         doc.save(path)
-        text = _para_text(parse_docx(path, chem_detection=True))
-        assert "data-bk-chem" not in text and "<msup>" in text
+        mathml = _island_mathml(
+            _inline_math_islands(_para_text(parse_docx(path, chem_detection=True)))[0]
+        )
+        assert "data-bk-chem" not in mathml and "<msup>" in mathml
 
     def test_charge_is_chem(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)  # Ca²⁺
@@ -1532,7 +1591,7 @@ class TestVertAlignChemistry:
         )
         doc.save(path)
         text = _para_text(parse_docx(path, chem_detection=True))
-        assert 'data-bk-chem="1"' in text
+        assert 'data-bk-chem="1"' in _island_mathml(_inline_math_islands(text)[0])
 
     def test_end_to_end_chem_braille_h2o(self, tmp_path: Path) -> None:
         from brailix.pipeline import Pipeline
@@ -1656,4 +1715,7 @@ class TestRunBreaksAndHyperlink:
         doc.save(path)
 
         text = _para_text(parse_docx(path))
-        assert "$<math" in text and "<msup>" in text
+        # Inline OMML inside a hyperlink defers like any other inline OMML.
+        islands = _inline_math_islands(text)
+        assert len(islands) == 1 and inline_math.unwrap(islands[0])[0] == "omml"
+        assert "<msup>" in _island_mathml(islands[0])

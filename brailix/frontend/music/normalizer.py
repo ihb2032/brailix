@@ -28,7 +28,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
-from brailix.frontend._xml import strip_namespace, strip_whitespace_text
+from brailix.core._xml import strip_namespace, strip_whitespace_text
 from brailix.frontend.music.adapters.musicxml import music_error_wrap
 
 if TYPE_CHECKING:
