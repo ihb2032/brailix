@@ -87,6 +87,7 @@ from brailix.core.defaults import DEFAULT_LANGUAGE, DEFAULT_PROFILE
 from brailix.core.errors import MissingExtraError, ParseError
 from brailix.input.docx._blocks import _iter_body_blocks
 from brailix.input.docx._ole import _build_ole_blob_map, _is_equation_ole
+from brailix.input.docx._xml import _INLINE_MATH_CLOSE, _INLINE_MATH_OPEN
 from brailix.ir.document import Block, DocumentIR
 
 __all__ = (
@@ -374,7 +375,15 @@ def _mtef_recovery_needed(result: DocumentIR, equation_oles: int) -> bool:
       silent-loss class that already shipped once in a frozen build.
       Other math sources (native OMML, script-run clusters) can only
       *inflate* the span count, so this check under-triggers rather
-      than over-triggers.
+      than over-triggers. The inflation cuts one way only and leaves a
+      known gap: a vanished OLE can hide behind an equal number of
+      non-OLE spans — e.g. one silently-dropped MathType OLE plus one
+      healthy native-OMML span gives ``len(spans) == equation_oles``, so
+      no retry fires and that OLE stays lost. Accepted as the lesser
+      evil (a needless LibreOffice round-trip on every false positive is
+      worse), but it means "auto" is a safety net with a hole, not a
+      guarantee — closing it would need spans tagged by source so only
+      OLE-derived ones are counted here.
     * **Spans exist but every one is an ``<merror>`` soft failure** —
       nothing decoded successfully (the original "all failed" rule).
     """
@@ -382,13 +391,13 @@ def _mtef_recovery_needed(result: DocumentIR, equation_oles: int) -> bool:
     for text in _iter_block_texts(result.blocks):
         idx = 0
         while True:
-            start = text.find("$<math", idx)
+            start = text.find(_INLINE_MATH_OPEN, idx)
             if start < 0:
                 break
-            end = text.find("</math>$", start)
+            end = text.find(_INLINE_MATH_CLOSE, start)
             if end < 0:
                 break
-            spans.append(text[start:end + len("</math>$")])
+            spans.append(text[start:end + len(_INLINE_MATH_CLOSE)])
             idx = end + 1
     if len(spans) < equation_oles:
         return True

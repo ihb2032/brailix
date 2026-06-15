@@ -18,12 +18,14 @@ from xml.sax.saxutils import escape
 
 from brailix.input.docx._ole import _ole_object_to_inline_math
 from brailix.input.docx._xml import (
+    _INLINE_MATH_OPEN,
     _W_PREFIX,
     Element,
     _first,
     _first_local,
     _inline_math_as_text,
     _local,
+    _ns_attr,
     _serialize,
     _wrap_inline_math,
 )
@@ -327,7 +329,7 @@ def _iter_paragraph_tokens(p: Element, ole_blobs: dict[str, bytes]):
             # Word's simple-field form: instruction in ``w:instr``
             # attribute, result text as children. Skip the result text
             # entirely since it's just Word's cached visual rendering.
-            instr = child.get(_W_PREFIX + "instr") or child.get("instr") or ""
+            instr = _ns_attr(child, _W_PREFIX, "instr") or ""
             piece = _eq_field_to_inline_math(instr)
             if piece is not None:
                 yield ("math", piece)
@@ -392,14 +394,14 @@ def _run_vert_align(r: Element) -> str | None:
     va = _first_local(rpr, "vertAlign")
     if va is None:
         return None
-    val = va.get(_W_PREFIX + "val") or va.get("val")
+    val = _ns_attr(va, _W_PREFIX, "val")
     return _VERT_ALIGN.get(val or "")
 
 
 def _is_inline_math(piece: str) -> bool:
     """True for an already-formed ``$<math>...</math>$`` inline-math piece
     (so the coalescer treats it as an opaque island, never script text)."""
-    return piece.startswith("$<math") and piece.endswith("$")
+    return piece.startswith(_INLINE_MATH_OPEN) and piece.endswith("$")
 
 
 def _is_cluster_char(ch: str) -> bool:
@@ -786,7 +788,7 @@ def _walk_run(
         if tag == "fldChar":
             if field_state is None:
                 continue
-            ftype = child.get(_W_PREFIX + "fldCharType") or child.get("fldCharType")
+            ftype = _ns_attr(child, _W_PREFIX, "fldCharType")
             if ftype == "begin":
                 field_state.begin()
             elif ftype == "separate":
@@ -853,6 +855,12 @@ def _walk_alt_subtree(node: Element, ole_blobs: dict[str, bytes]):
     ``<w:r>`` or ``<w:p>`` here. We dispatch through the same machinery
     used by paragraph walking, just without the paragraph-level
     splitting (the caller's run/paragraph context already has that).
+
+    Note: this re-implements the object / oMath / oMathPara / r tag
+    dispatch of :func:`_iter_paragraph_tokens` (different return contract —
+    ``(piece, math)`` here vs. tokens there). A new inline-math source added
+    to that walker must be mirrored here, or AlternateContent branches will
+    silently drop it.
     """
     for child in node:
         tag = _local(child.tag)
@@ -935,7 +943,7 @@ def _paragraph_alignment(p: Element) -> str | None:
     jc = _first(pPr, _W_PREFIX + "jc")
     if jc is None:
         return None
-    val = jc.get(_W_PREFIX + "val") or jc.get("val")
+    val = _ns_attr(jc, _W_PREFIX, "val")
     return _JC_ALIGN.get((val or "").lower())
 
 
@@ -950,7 +958,7 @@ def _ilvl_value(ilvl_elem: Element | None) -> int:
     """
     if ilvl_elem is None:
         return 0
-    raw = ilvl_elem.get(_W_PREFIX + "val") or ilvl_elem.get("val")
+    raw = _ns_attr(ilvl_elem, _W_PREFIX, "val")
     if not raw:
         return 0
     try:

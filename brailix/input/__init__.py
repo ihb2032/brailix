@@ -20,19 +20,27 @@ Currently shipping:
   MusicXML through the matching music source adapter.
 
 To plug in a new format, write an adapter that returns a
-``DocumentIR`` and (optionally) register it through whatever
-discovery mechanism your application uses — the input layer doesn't
-maintain a registry because the choice is usually static (file
-extension or MIME type).
+``DocumentIR``. Which adapter handles a given file is driven by the
+file itself (extension / content), not by the profile — so, unlike
+the profile-selected subsystems (zh analyzer, pinyin, math / music
+source), this layer keeps no name→implementation registry. Discovery
+of *which* formats an application offers (file-dialog filters,
+fallback rules, third-party adapters) is an application concern and
+lives there: an application can wrap these functions as registered
+adapters behind its own registry.
 
-:func:`parse_file` is the one piece of suffix dispatch the input
-layer keeps in-house, so GUIs / CLIs / scripts don't each reinvent
-``read_text + pick parser``.
+:func:`parse_file` is the in-house convenience dispatcher, so
+GUIs / CLIs / scripts don't each reinvent ``read_text + pick parser``.
+Its routing is a **data table** (:data:`_FORMAT_ROUTES`) mapping a
+suffix set to a handler — adding a built-in format is one more row
+plus its ``parse_*`` adapter, not a new branch.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from brailix.core.defaults import DEFAULT_LANGUAGE, DEFAULT_PROFILE
@@ -86,11 +94,114 @@ def _looks_like_musicxml(text: str) -> bool:
     return "<score-partwise" in head or "<score-timewise" in head
 
 
+@dataclass
+class _FileCtx:
+    """Everything a route handler needs to parse one file.
+
+    ``text`` is read lazily (and cached) so a handler that consumes the
+    path directly — every binary format (``.docx`` / ``.mid`` / ``.mxl``
+    / ...) — never decodes the file as UTF-8. Text formats read it once.
+    """
+
+    path: Path
+    language: str
+    profile: str
+    mathtype_fallback: str
+    chem_detection: bool
+    _text: str | None = field(default=None, init=False, repr=False)
+
+    @property
+    def text(self) -> str:
+        if self._text is None:
+            # utf-8-sig strips a leading BOM (Windows Notepad / Word "save as
+            # .txt" write one), else behaves exactly like utf-8 — without it a
+            # BOM survives into the first block and a Markdown heading on line
+            # one ("﻿# 标题") fails the ^#{1,6} match. Still raises
+            # UnicodeDecodeError on genuinely non-UTF-8 bytes.
+            self._text = self.path.read_text(encoding="utf-8-sig")
+        return self._text
+
+
+# Route handlers: each takes a :class:`_FileCtx` and returns a ``DocumentIR``.
+# Path-based handlers leave ``ctx.text`` untouched (no UTF-8 read); text-based
+# ones consume it.
+
+
+def _route_docx(ctx: _FileCtx) -> DocumentIR:
+    return parse_docx(
+        ctx.path,
+        language=ctx.language,
+        profile=ctx.profile,
+        mathtype_fallback=ctx.mathtype_fallback,
+        chem_detection=ctx.chem_detection,
+    )
+
+
+def _route_doc(ctx: _FileCtx) -> DocumentIR:
+    return parse_doc(
+        ctx.path,
+        language=ctx.language,
+        profile=ctx.profile,
+        chem_detection=ctx.chem_detection,
+    )
+
+
+def _route_musicxml(ctx: _FileCtx) -> DocumentIR:
+    # MusicXML / .mxl → single-block DocumentIR wrapping a ScoreBlock;
+    # Pipeline._populate_music_block later runs the music frontend over it.
+    return parse_musicxml(ctx.path, language=ctx.language, profile=ctx.profile)
+
+
+def _route_score(ctx: _FileCtx) -> DocumentIR:
+    # .mid / .midi (bytes) / .abc (text) reach MusicXML via a source adapter;
+    # parse_score_file reads the file in the right mode itself, so this stays
+    # a path handler and the binary ones are never UTF-8 decoded.
+    return parse_score_file(ctx.path, language=ctx.language, profile=ctx.profile)
+
+
+def _route_xml(ctx: _FileCtx) -> DocumentIR:
+    # Generic .xml: only treat as a score if the head looks like one;
+    # otherwise plain text, so a non-score .xml (MathML, DocBook, arbitrary
+    # XML) doesn't yield misleading MUSIC_* warnings / an empty score tree.
+    if _looks_like_musicxml(ctx.text):
+        return parse_musicxml(ctx.path, language=ctx.language, profile=ctx.profile)
+    return parse_plain(ctx.text, language=ctx.language, profile=ctx.profile)
+
+
+def _route_markdown(ctx: _FileCtx) -> DocumentIR:
+    return parse_markdown(ctx.text, language=ctx.language, profile=ctx.profile)
+
+
+def _route_plain(ctx: _FileCtx) -> DocumentIR:
+    return parse_plain(ctx.text, language=ctx.language, profile=ctx.profile)
+
+
+_Handler = Callable[[_FileCtx], DocumentIR]
+
+# Suffix → handler routing table — the data that replaces a chain of
+# ``if suffix in ...`` branches. Adding a built-in format is one more row plus
+# its ``parse_*`` adapter, no new branch. The suffix sets are disjoint, so the
+# flattened lookup is unambiguous; an unlisted suffix — and the no-suffix case
+# — falls through to :func:`_route_plain` (the default in :func:`parse_file`).
+_FORMAT_ROUTES: tuple[tuple[frozenset[str], _Handler], ...] = (
+    (_DOCX_SUFFIXES, _route_docx),
+    (_DOC_SUFFIXES, _route_doc),
+    (_MUSIC_SUFFIXES, _route_musicxml),
+    (ADAPTER_SCORE_SUFFIXES, _route_score),
+    (_SNIFFED_XML_SUFFIXES, _route_xml),
+    (_MARKDOWN_SUFFIXES, _route_markdown),
+)
+_SUFFIX_ROUTES: dict[str, _Handler] = {
+    suffix: handler for suffixes, handler in _FORMAT_ROUTES for suffix in suffixes
+}
+
+
 def parse_file(
     path: str | os.PathLike[str],
     *,
     language: str = DEFAULT_LANGUAGE,
     profile: str = DEFAULT_PROFILE,
+    mathtype_fallback: str = "off",
     chem_detection: bool = False,
 ) -> DocumentIR:
     """Read ``path`` and parse to :class:`DocumentIR` by suffix.
@@ -120,45 +231,30 @@ def parse_file(
     file through the markdown parser, say) should call the underlying
     ``parse_*`` directly after reading the file themselves.
 
+    ``mathtype_fallback`` is forwarded to :func:`parse_docx` for ``.docx`` /
+    ``.docm`` (ignored for every other format, the same way
+    ``chem_detection`` is). It defaults to ``"off"`` — the native MTEF
+    adapter only, so old MTEF files it can't decode come back as
+    ``<merror>`` placeholders. Pass ``"auto"`` (or ``"libreoffice"``) to
+    engage the LibreOffice safety net, where the document is re-parsed
+    through ``soffice`` so the math becomes readable. The default stays
+    ``"off"`` so this convenience dispatch never shells out to an external
+    converter implicitly; :meth:`brailix.pipeline.Pipeline.parse_file`
+    drives the value from the ``input.docx.mathtype_fallback`` profile
+    feature.
+
     Errors propagate as-is: :class:`FileNotFoundError` when ``path``
     doesn't exist, :class:`UnicodeDecodeError` when text bytes aren't
     valid UTF-8, :class:`MissingExtraError` when a needed extra (``docx``
     for Word, ``midi`` / ``abc`` for those score formats) isn't
     installed, :class:`ParseError` for malformed Word documents.
     """
-    p = Path(path)
-    suffix = p.suffix.lower()
-    if suffix in _DOCX_SUFFIXES:
-        return parse_docx(
-            p, language=language, profile=profile, chem_detection=chem_detection
-        )
-    if suffix in _DOC_SUFFIXES:
-        return parse_doc(
-            p, language=language, profile=profile, chem_detection=chem_detection
-        )
-    if suffix in _MUSIC_SUFFIXES:
-        # Music files (MusicXML / .mxl) go through the music input
-        # adapter — produces a single-block DocumentIR wrapping a
-        # ScoreBlock. Pipeline's _populate_music_block then runs the
-        # music frontend to parse the XML into a MusicInline tree.
-        return parse_musicxml(p, language=language, profile=profile)
-    if suffix in ADAPTER_SCORE_SUFFIXES:
-        # Score formats that need a source adapter to reach MusicXML
-        # (.mid / .midi as bytes, .abc as text). Routed before the UTF-8
-        # read below because MIDI is binary; parse_score_file reads the
-        # file itself with the right mode and runs the adapter.
-        return parse_score_file(p, language=language, profile=profile)
-    # utf-8-sig strips a leading BOM if present (Windows Notepad / Word
-    # "save as .txt" write one), else behaves exactly like utf-8 — without
-    # it a BOM survives into the first block and a Markdown heading on line
-    # one ("﻿# 标题") fails the ^#{1,6} match.
-    text = p.read_text(encoding="utf-8-sig")
-    if suffix in _SNIFFED_XML_SUFFIXES:
-        # Generic .xml: only treat as a score if it actually looks like one;
-        # otherwise fall through to plain text.
-        if _looks_like_musicxml(text):
-            return parse_musicxml(p, language=language, profile=profile)
-        return parse_plain(text, language=language, profile=profile)
-    if suffix in _MARKDOWN_SUFFIXES:
-        return parse_markdown(text, language=language, profile=profile)
-    return parse_plain(text, language=language, profile=profile)
+    ctx = _FileCtx(
+        path=Path(path),
+        language=language,
+        profile=profile,
+        mathtype_fallback=mathtype_fallback,
+        chem_detection=chem_detection,
+    )
+    handler = _SUFFIX_ROUTES.get(ctx.path.suffix.lower(), _route_plain)
+    return handler(ctx)
