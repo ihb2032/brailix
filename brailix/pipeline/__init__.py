@@ -459,6 +459,9 @@ class Pipeline:
             path,
             language=self._profile.language,
             profile=self.profile,
+            mathtype_fallback=self._profile.feature(
+                "input.docx.mathtype_fallback", "off"
+            ),
             chem_detection=self._profile.feature(
                 "input.docx.detect_chemistry", False
             ),
