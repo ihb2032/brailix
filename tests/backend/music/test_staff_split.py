@@ -1,11 +1,14 @@
-"""Multi-staff part splitting (``_emit_part`` staff loop).
+"""Per-part / per-staff reading-state reset (``_emit_part``).
 
-A part whose notes carry distinct ``<staff>`` numbers is emitted staff by
-staff, separated by ``music_part_sep``. Per-staff reading state — octave
-inference, value-sign baseline, hairpin, AND the Par. 9.2 clef — must
-restart at each staff boundary so one staff's context never leaks into the
-next. This path had no test coverage; the clef-reset case below is a
-regression guard for that leak.
+Reading state — octave inference, value-sign baseline, hairpin, AND the
+Par. 9.2 clef — must restart at every part boundary, and at every staff
+boundary of a multi-staff part, so one part's / staff's context never
+leaks into the next. Both paths funnel through
+``_reset_part_reading_state``; the two clef-reset cases below are
+regression guards for that leak (a leaked clef silently reverses chord
+written-note direction). The single-staff cross-part case had no coverage
+before — the multi-staff branch reset the clef but the single-staff branch
+didn't.
 """
 
 from __future__ import annotations
@@ -83,3 +86,44 @@ class TestClefResetsAtStaffBoundary:
         # (clef-less default), not E3 (which a leaked treble clef picks).
         assert staff2_notes[0].dots == _quarter_note_dots(profile, "C", 3)
         assert staff2_notes[0].dots != _quarter_note_dots(profile, "E", 3)
+
+
+class TestClefResetsAtPartBoundary:
+    def test_clef_does_not_leak_into_next_single_staff_part(self, profile, ctx):
+        # Two single-staff parts. P1 declares a G (treble) clef; P2 declares
+        # no clef of its own. The clef must NOT leak across the part
+        # boundary: leaked, P2's chord reads treble (uppermost = written, so
+        # E3); reset at the part boundary, P2 falls back to the clef-less
+        # default (source order, first note written, so C3). The chord is
+        # authored low→high (C3 root, E3 chord) so the two behaviours pick
+        # different written notes. Before the fix the single-staff branch of
+        # _emit_part didn't reset the clef (only the multi-staff branch did),
+        # so P2 inherited P1's treble clef and read its chord upside down.
+        score = ET.fromstring(
+            '<score-partwise version="4.0">'
+            '<part id="P1"><measure number="1">'
+            "<attributes><divisions>1</divisions>"
+            "<clef><sign>G</sign><line>2</line></clef>"
+            "</attributes>"
+            "<note><pitch><step>C</step><octave>4</octave></pitch>"
+            "<duration>1</duration><type>quarter</type></note>"
+            "</measure></part>"
+            '<part id="P2"><measure number="1">'
+            "<attributes><divisions>1</divisions></attributes>"
+            # chord authored low (C3 root) then high (E3)
+            "<note><pitch><step>C</step><octave>3</octave></pitch>"
+            "<duration>1</duration><type>quarter</type></note>"
+            "<note><chord/><pitch><step>E</step><octave>3</octave></pitch>"
+            "<duration>1</duration><type>quarter</type></note>"
+            "</measure></part></score-partwise>"
+        )
+        cells = emit_tree(score, ctx, profile)
+        roles = _roles(cells)
+        # Single-staff parts → exactly one part-sep, between P1 and P2.
+        sep_idx = roles.index("music_part_sep")
+        part2_notes = [c for c in cells[sep_idx:] if c.role == "music_note"]
+        assert part2_notes, "part 2 should emit notes after the separator"
+        # P2's chord must pick C3 (clef-less default) as its written note,
+        # not E3 (which a leaked treble clef would pick).
+        assert part2_notes[0].dots == _quarter_note_dots(profile, "C", 3)
+        assert part2_notes[0].dots != _quarter_note_dots(profile, "E", 3)
