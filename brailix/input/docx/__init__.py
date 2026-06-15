@@ -15,36 +15,41 @@ and ``.doc`` (legacy binary, via external conversion).
     ``ParseError`` directing the caller to convert manually.
 
 Math handling
-    Word stores formulas as OMML.  This adapter:
+    Word stores formulas as OMML (and, for older documents, OLE
+    MathType or legacy EQ fields). This adapter follows one rule, the
+    same one ARCHITECTURE §1 states for the input/frontend boundary: a
+    math source that arrives as **text** is left raw and *deferred* to
+    the frontend's math pass; a source that arrives as **binary** is
+    decoded here, because the text IR carries no binary payload. So:
 
-    * Top-level / paragraph-only display equations
-      (``m:oMathPara``)        →  :class:`MathBlock` with
-                                  ``source="omml"`` carrying the OMML
-                                  XML string. The math frontend's OMML
-                                  adapter then converts to MathML at
-                                  Pipeline time.
-    * Inline equations (``m:oMath`` inside a paragraph)
-                                →  converted to MathML synchronously
-                                   here, then embedded into the
-                                   paragraph's text as ``$<math>...</math>$``.
-                                   The frontend's segmenter recognises
-                                   the ``$...$`` wrapping; a tiny
-                                   normalize tweak detects the MathML
-                                   payload and sets ``source="mathml"``
-                                   on the resulting :class:`MathInline`.
+    * Display equations (``m:oMathPara``) become a :class:`MathBlock`
+      with ``source="omml"`` carrying the raw OMML; the math frontend
+      converts it at Pipeline time.
+    * Inline equations (``m:oMath`` inside a paragraph) and legacy Word
+      EQ fields are wrapped as *deferred* source-tagged inline-math
+      islands (:func:`brailix.core.inline_math.wrap`, ``source="omml"``
+      / ``"eq_field"``) embedded in the paragraph's text. The frontend's
+      segmenter recognises the island as a ``$...$`` region and the
+      normalizer decodes the tag, so the matching adapter runs at
+      Pipeline time — the same deferral the display path uses, and the
+      reason this adapter imports no math frontend for these paths.
+    * OLE MathType (``Equation.DSMT4`` / ``Equation.3``) is the binary
+      case: its MTEF payload cannot live in the text IR, so it is decoded
+      at the input boundary (via the MTEF adapter) and embedded as an
+      eager ``$<math>...</math>$`` island. See :mod:`._ole`.
     * Sub/superscript runs (``<w:vertAlign>`` — the Ctrl+= / Ctrl+Shift+=
-      shortcuts, or the Font dialog) → a maximal cluster of script-bearing
-      runs is folded into the same inline ``$<math>...</math>$`` form as an
-      ``<msup>`` / ``<msub>`` tree, so a formula typed as formatted text
+      shortcuts, or the Font dialog) are not a foreign source dialect at
+      all: a maximal cluster of script-bearing runs is *synthesised* into
+      an ``<msup>`` / ``<msub>`` MathML tree built here and embedded as a
+      ``$<math>...</math>$`` island, so a formula typed as formatted text
       (``x²``, ``H₂O``) is no longer flattened to ``x2`` / ``H2O``. With
       ``chem_detection`` on, a cluster that conservatively reads as a
       chemical formula is tagged ``data-bk-chem`` so the backend applies
       chemistry rules instead of generic math.
 
 The split lets inline math stay inline (no spurious paragraph break)
-while keeping the docx adapter's OMML→MathML conversion path identical
-to the path used for display equations — both go through
-:mod:`brailix.frontend.math.adapters.omml`.
+while making every OMML path — display and inline — defer through the
+identical frontend route (:mod:`brailix.frontend.math.adapters.omml`).
 
 To handle both legacy and modern files through one entry point, use
 :func:`parse_file` (suffix dispatch); call :func:`parse_docx` or

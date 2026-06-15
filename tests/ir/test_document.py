@@ -169,6 +169,63 @@ class TestSerializationStructures:
         assert restored.text == "名言"
 
 
+class TestStructureKey:
+    """``Block.structure_key()`` captures rendering-affecting shape beyond
+    the text surface, so a text-only cache key (``block_hash``) can compose
+    with it without same-text blocks of different shape colliding."""
+
+    def test_type_distinguishes_same_text_blocks(self):
+        assert (
+            Heading(text="x", level=1).structure_key()
+            != Paragraph(text="x").structure_key()
+        )
+
+    def test_heading_level_in_key(self):
+        assert (
+            Heading(text="x", level=1).structure_key()
+            != Heading(text="x", level=2).structure_key()
+        )
+
+    def test_list_ordering_in_key(self):
+        items = [ListItem(text="a"), ListItem(text="b")]
+        assert (
+            List(ordered=False, items=list(items)).structure_key()
+            != List(ordered=True, items=list(items)).structure_key()
+        )
+
+    def test_container_shape_in_key(self):
+        assert (
+            List(items=[ListItem(text="a")]).structure_key()
+            != List(
+                items=[ListItem(text="a"), ListItem(text="b")]
+            ).structure_key()
+        )
+        assert (
+            Table(rows=[TableRow()]).structure_key()
+            != Table(rows=[TableRow(), TableRow()]).structure_key()
+        )
+
+    def test_align_and_source_in_key(self):
+        assert (
+            Paragraph(text="x").structure_key()
+            != Paragraph(text="x", align="center").structure_key()
+        )
+        assert (
+            MathBlock(text="E", source="latex").structure_key()
+            != MathBlock(text="E", source="mathml").structure_key()
+        )
+
+    def test_excludes_text_id_and_span(self):
+        # The surface hash owns text; id / span must not bust the cache.
+        a = Paragraph(text="hello", id="b1", span=Span(0, 5))
+        b = Paragraph(text="world", id="b2", span=Span(7, 12))
+        assert a.structure_key() == b.structure_key()
+
+    def test_stable_across_calls(self):
+        h = Heading(text="x", level=3)
+        assert h.structure_key() == h.structure_key()
+
+
 class TestTypedChildValidation:
     """JSON round-trips must reject obviously wrong child types instead
     of silently swallowing them — otherwise downstream consumers

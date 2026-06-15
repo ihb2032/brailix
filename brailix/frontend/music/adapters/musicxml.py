@@ -17,8 +17,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from xml.sax.saxutils import escape, quoteattr
 
+from brailix.core._xml import strip_xml_invalid_chars
 from brailix.core.context import MusicContext
-from brailix.frontend._xml import strip_xml_invalid_chars
 
 
 @dataclass(slots=True)

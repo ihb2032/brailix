@@ -72,6 +72,40 @@ class Block:
             d["span"] = list(self.span.to_tuple())
         return d
 
+    def structure_key(self) -> str:
+        """Structural identity beyond the text surface, for cache keys.
+
+        :func:`brailix.pipeline.block_hash` keys only on the text surface
+        plus the profile, so two same-text blocks of different shape — a
+        Heading vs a Paragraph, an ordered vs an unordered List, two Tables
+        of different size — hash identically.  A block cache keyed on the
+        bare text hash would then serve one block's compiled braille for the
+        other.  A front-end composes ``block_hash`` with this key to keep
+        its cache sound; the compiler itself stays cache-agnostic.
+
+        Derived generically from :func:`~dataclasses.fields` so every
+        layout-affecting scalar (heading ``level``, list ``ordered``,
+        ``align``, math / music ``source``, ...) and the shape (length) of
+        structural containers (``items`` / ``rows`` / ``cells``) is captured
+        automatically — a new structural field on any subclass is covered
+        without editing this method or the cache key.  ``children`` and
+        ``text`` are excluded (the surface hash covers them); ``id`` and
+        ``span`` too (an edit elsewhere shifts ``span`` but must not
+        invalidate this block's cache entry).
+        """
+        parts = [self.type]
+        for f in fields(self):
+            if f.name in ("id", "children", "text", "span"):
+                continue
+            value = getattr(self, f.name)
+            if isinstance(value, (list, tuple)):
+                # Structural container: its length is the identity that
+                # matters; element text is already in the surface hash.
+                parts.append(f"{f.name}#{len(value)}")
+            else:
+                parts.append(f"{f.name}={value!r}")
+        return "|".join(parts)
+
 
 def _is_ir_payload(value: Any) -> bool:
     """True if ``value`` is an IR node (:class:`Block` / :class:`InlineNode`)

@@ -6,6 +6,15 @@ fragment, ...) and produce a typed
 :class:`~brailix.ir.inline` representation. The Backend then
 decides how to write each type as braille.
 
+The math / music source adapters here double as the shared conversion
+service the **input** layer defers to: a text-dialect fragment Word
+stored as OMML / EQ arrives as a deferred source-tagged island
+(:mod:`brailix.core.inline_math`) and is converted by
+:func:`~brailix.frontend.math.parse_math_tree`, exactly as a user-typed
+``$...$`` fragment is. The boundary rule (text defers, binary is decoded
+at input) is stated in ARCHITECTURE §1; the dependency is one-way (input
+imports this; this never imports input).
+
 ## One public callable per subsystem
 
 Each subsystem under ``frontend/`` exposes **a single high-level

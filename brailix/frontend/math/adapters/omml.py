@@ -27,8 +27,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from brailix.core._xml import local_name
 from brailix.core.context import MathContext
-from brailix.frontend._xml import local_name
 from brailix.frontend.math.adapters._atoms import tokenize_math_text
 from brailix.frontend.math.utils import (
     _MATHML_NS,
@@ -90,7 +90,7 @@ def _load() -> OmmlMathSourceAdapter:
 
 def _local(tag: str) -> str:
     """Bare local name of an ElementTree tag — delegates to the shared
-    :func:`brailix.frontend._xml.local_name` (the generic ``{...}`` strip
+    :func:`brailix.core._xml.local_name` (the generic ``{...}`` strip
     handles the OMML namespace too)."""
     return local_name(tag)
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape, quoteattr
 
-from brailix.frontend._xml import strip_xml_invalid_chars
+from brailix.core._xml import strip_xml_invalid_chars
 
 # The MathML 3 namespace. Some emitters (latex2mathml) include it, others
 # don't; both forms are accepted by the normalizer.

@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from brailix.core import inline_math
 from brailix.core.context import FrontendContext
 from brailix.core.protocols import Normalizer
 from brailix.core.registry import Registry
@@ -329,14 +330,20 @@ def _try_atomic(seg: Segment) -> InlineNode | None:
     if seg.type == "space":
         return Space(surface=seg.surface, span=seg.span)
     if seg.type == "math_inline":
-        # The MathParser fills the ``math`` field later.  Most
-        # inline math arrives as LaTeX (``$x^2$``), but the docx input
-        # adapter emits MathML inside the same ``$...$`` wrapping
-        # because Word's source is OMML — we route those to the
-        # ``mathml`` source adapter by inspecting the payload.  A bare
-        # leading ``<math`` (after the opening ``$``) is a sufficient
-        # discriminator since the LaTeX grammar can't begin with an
-        # XML element.
+        # The MathParser fills the ``math`` field later (Pipeline._attach_math).
+        # A *tagged* island is deferred inline math the input layer extracted
+        # but did not convert (Word OMML / EQ field); decode it back to its
+        # raw payload + source dialect so the right adapter runs later. This
+        # is what lets the input layer defer instead of importing the math
+        # frontend (see brailix.core.inline_math / ARCHITECTURE §1).
+        if inline_math.is_tagged(seg.surface):
+            source, payload = inline_math.unwrap(seg.surface)
+            return MathInline(surface=payload, span=seg.span, source=source)
+        # Otherwise it's a plain user-typed fragment. Most inline math arrives
+        # as LaTeX (``$x^2$``); a bare leading ``<math`` (after the opening
+        # ``$``) marks MathML — a sufficient discriminator since the LaTeX
+        # grammar can't begin with an XML element. (MTEF / script-cluster
+        # paths still emit this eager ``$<math>...$`` form.)
         inner = seg.surface
         if inner.startswith("$") and inner.endswith("$"):
             inner = inner[1:-1]

@@ -34,6 +34,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, fields
 from typing import Any, ClassVar
 
+from brailix.core._xml import strip_namespace
 from brailix.core.span import Span
 
 # ---------------------------------------------------------------------------
@@ -341,24 +342,21 @@ def from_dict(payload: dict[str, Any]) -> InlineNode:
 
 
 def _strip_xml_namespace(elem: ET.Element) -> ET.Element:
-    """Drop any ``{namespace}local`` Clark-notation prefix from every tag
-    in ``elem`` (in place) and return it.
+    """Drop ``{namespace}`` Clark-notation prefixes (in place) and return
+    ``elem`` for chaining.
 
     The IR round-trip serializes a math / score tree with ``ET.tostring``
     and re-parses it with ``ET.fromstring``; if the producer left an
     ``xmlns`` attribute on the root, the reparse rewrites every tag to
     Clark notation and the backend — which dispatches on bare local names —
     fails to match, yielding blank cells + spurious warnings. Stripping at
-    the IR boundary keeps the round-trip lossless no matter how the tree was
-    built. Kept local (not imported from ``frontend._xml``) so the IR layer
-    takes no dependency on the frontend package.
+    the IR boundary keeps the round-trip lossless no matter how the tree
+    was built. Delegates to the shared
+    :func:`brailix.core._xml.strip_namespace` (a core helper, so the IR
+    layer takes no frontend dependency); this thin wrapper just returns
+    ``elem`` so the deserializer can strip-and-return in one expression.
     """
-    if elem.tag.startswith("{"):
-        close = elem.tag.find("}")
-        if close != -1:
-            elem.tag = elem.tag[close + 1:]
-    for child in elem:
-        _strip_xml_namespace(child)
+    strip_namespace(elem)
     return elem
 
 

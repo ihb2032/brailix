@@ -6,6 +6,15 @@ Each adapter parses one source format (plain text, Markdown, Word
 populated. Inline content stays as raw ``Block.text`` until the
 Pipeline's frontend runs over it.
 
+Embedded foreign math / music sources follow one boundary rule
+(ARCHITECTURE §1). A **text** dialect (Word OMML / EQ field) is left raw
+and deferred to the frontend — inline ones travel as a source-tagged
+island (:mod:`brailix.core.inline_math`) inside ``Block.text``, block
+ones as ``MathBlock(source=...)``. A **binary** dialect (MathType MTEF,
+MIDI, the ``.mxl`` ZIP) is decoded here at the input boundary, because
+the text IR can't carry binary. So this layer imports no math / music
+*frontend* for the text dialects; only the binary decoders reach across.
+
 Currently shipping:
 
 * :mod:`brailix.input.plain`    — one paragraph from a string.
