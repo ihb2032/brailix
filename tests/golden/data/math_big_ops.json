@@ -15,17 +15,17 @@
     "scripts": {
       "description": "Big operators with sub/sup limits — limit markers carry the 46 prefix (below/above ⠨⠡/⠨⠌)",
       "cases": [
-        {"src": "$\\sum_{i=1}^{n} a_i$", "expected": "⠸⠎⠨⠡⠰⠊⠀⠶⠼⠁⠱⠨⠌⠰⠝⠱⠰⠁⠡⠰⠊", "note": "sum lower/upper limits carry the 46 prefix; the trailing a_i is an ordinary subscript (no 46)"},
-        {"src": "$\\sum_{i=1} a_i$", "expected": "⠸⠎⠨⠡⠰⠊⠀⠶⠼⠁⠱⠰⠁⠡⠰⠊", "note": "sum with sub-only limit"},
-        {"src": "$\\sum^{n} a_i$", "expected": "⠸⠎⠨⠌⠰⠝⠱⠰⠁⠡⠰⠊", "note": "sum with sup-only limit"},
-        {"src": "$\\sum_{k=3}^{} a_k$", "expected": "⠸⠎⠨⠡⠰⠅⠀⠶⠼⠉⠱⠨⠌⠱⠰⠁⠡⠰⠅", "note": "sum with empty sup"},
-        {"src": "$\\prod_{i=1}^{n} a_i$", "expected": "⠸⠏⠨⠡⠰⠊⠀⠶⠼⠁⠱⠨⠌⠰⠝⠱⠰⠁⠡⠰⠊", "note": "prod with full limits"},
-        {"src": "$\\prod_{n=1} a_n$", "expected": "⠸⠏⠨⠡⠰⠝⠀⠶⠼⠁⠱⠰⠁⠡⠰⠝", "note": "prod with sub-only"},
+        {"src": "$\\sum_{i=1}^{n} a_i$", "expected": "⠸⠎⠨⠡⠰⠊⠀⠶⠼⠁⠱⠨⠌⠰⠝⠱⠰⠁⠡⠰⠊⠱", "note": "sum lower/upper limits carry the 46 prefix; the trailing a_i is an ordinary single-letter subscript (no 46) and closes with ⠱"},
+        {"src": "$\\sum_{i=1} a_i$", "expected": "⠸⠎⠨⠡⠰⠊⠀⠶⠼⠁⠱⠰⠁⠡⠰⠊⠱", "note": "sum with sub-only limit; trailing a_i closes with ⠱"},
+        {"src": "$\\sum^{n} a_i$", "expected": "⠸⠎⠨⠌⠰⠝⠱⠰⠁⠡⠰⠊⠱", "note": "sum with sup-only limit; trailing a_i closes with ⠱"},
+        {"src": "$\\sum_{k=3}^{} a_k$", "expected": "⠸⠎⠨⠡⠰⠅⠀⠶⠼⠉⠱⠨⠌⠱⠰⠁⠡⠰⠅⠱", "note": "sum with empty sup; trailing a_k closes with ⠱"},
+        {"src": "$\\prod_{i=1}^{n} a_i$", "expected": "⠸⠏⠨⠡⠰⠊⠀⠶⠼⠁⠱⠨⠌⠰⠝⠱⠰⠁⠡⠰⠊⠱", "note": "prod with full limits; trailing a_i closes with ⠱"},
+        {"src": "$\\prod_{n=1} a_n$", "expected": "⠸⠏⠨⠡⠰⠝⠀⠶⠼⠁⠱⠰⠁⠡⠰⠝⠱", "note": "prod with sub-only; trailing a_n closes with ⠱"},
         {"src": "$\\int_0^1 f(x) dx$", "expected": "⠮⠨⠡⠴⠨⠌⠂⠰⠋⠣⠰⠭⠜⠰⠙⠭", "note": "integral with both bounds (atomic digits, big_op_prefix=46); dx is one lowercase run ⠰⠙⠭ — matches the docx integral example ⠮⠰⠭⠌⠍⠱⠰⠙⠭"},
         {"src": "$\\int_a b$", "expected": "⠮⠨⠡⠰⠁⠱⠰⠃", "note": "integral with letter sub bound only"},
         {"src": "$\\oint f dx$", "expected": "⠮⠴⠰⠋⠙⠭", "note": "《盲文常用数学符号》contour integral ∮ ⠮⠴ (= ∫ + 356), no sub/sup limits; f d x are adjacent same-class letters → one ⠰ (二.规则1; the print thin-space has no braille cell)"},
-        {"src": "$\\bigcup_{i=1}^{n} A_i$", "expected": "⠸⠼⠨⠡⠰⠊⠀⠶⠼⠁⠱⠨⠌⠰⠝⠱⠠⠁⠡⠰⠊", "note": "big union ⋃ with lower/upper limits carrying the 46 prefix"},
-        {"src": "$\\bigcap_{i} A_i$", "expected": "⠰⠹⠨⠡⠰⠊⠱⠠⠁⠡⠰⠊", "note": "big intersection ⋂ with a lower limit carrying the 46 prefix"}
+        {"src": "$\\bigcup_{i=1}^{n} A_i$", "expected": "⠸⠼⠨⠡⠰⠊⠀⠶⠼⠁⠱⠨⠌⠰⠝⠱⠠⠁⠡⠰⠊⠱", "note": "big union ⋃ with lower/upper limits carrying the 46 prefix; trailing A_i closes with ⠱"},
+        {"src": "$\\bigcap_{i} A_i$", "expected": "⠰⠹⠨⠡⠰⠊⠱⠠⠁⠡⠰⠊⠱", "note": "big intersection ⋂ with a lower limit carrying the 46 prefix; trailing A_i closes with ⠱"}
       ]
     },
     "big_op_functions": {
@@ -33,9 +33,9 @@
       "cases": [
         {"src": "$\\lim_{x \\to 0} f(x)$", "expected": "⠫⠇⠍⠨⠡⠰⠭⠀⠒⠕⠼⠚⠱⠰⠋⠣⠰⠭⠜", "note": "rules §62 \\lim ⠫⠇⠍ + sub limit with prefix"},
         {"src": "$\\max_{x} f$", "expected": "⠫⠍⠭⠨⠡⠰⠭⠱⠰⠋", "note": "max(m+x) + sub limit with the 46 prefix"},
-        {"src": "$\\min_{n} a_n$", "expected": "⠫⠍⠝⠨⠡⠰⠝⠱⠰⠁⠡⠰⠝", "note": "min(m+n) + sub limit"},
+        {"src": "$\\min_{n} a_n$", "expected": "⠫⠍⠝⠨⠡⠰⠝⠱⠰⠁⠡⠰⠝⠱", "note": "min(m+n) + sub limit; trailing a_n closes with ⠱"},
         {"src": "$\\sup_{x} f$", "expected": "⠫⠎⠥⠏⠨⠡⠰⠭⠱⠰⠋", "note": "sup(s+u+p) + sub limit"},
-        {"src": "$\\inf_{n} a_n$", "expected": "⠫⠊⠝⠋⠨⠡⠰⠝⠱⠰⠁⠡⠰⠝", "note": "inf(i+n+f) + sub limit"}
+        {"src": "$\\inf_{n} a_n$", "expected": "⠫⠊⠝⠋⠨⠡⠰⠝⠱⠰⠁⠡⠰⠝⠱", "note": "inf(i+n+f) + sub limit; trailing a_n closes with ⠱"}
       ]
     }
   }

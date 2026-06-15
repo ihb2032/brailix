@@ -30,7 +30,7 @@ Only the three names below — :class:`MathBrailleContext`,
 package.  Everything else lives in the sub-modules and is package-
 internal; callers that need a helper should import it from its
 specific sub-module (e.g. ``from brailix.backend.math.utils import
-_is_leaf_like``) so the package interface stays scoped.
+_is_atomic``) so the package interface stays scoped.
 """
 
 from __future__ import annotations

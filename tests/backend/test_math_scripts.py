@@ -84,14 +84,16 @@ class TestScripts:
         # number_sign for the 0
         assert "number_sign" in r
 
-    def test_msub_regular_atomic_no_close(self, profile):
-        # a_n — atomic subscript with simplify_script on → no close.
+    def test_msub_single_letter_emits_close(self, profile):
+        # a_n — a single-letter subscript keeps the close ⠱ to bound the
+        # script (单字母上下标要 close 收尾，数字不要); only bare-digit
+        # scripts omit it.
         cells, _ = emit(
             mml("<math><msub><mi>a</mi><mi>n</mi></msub></math>"), profile
         )
         r = roles(cells)
         assert "math_subscript" in r
-        assert "math_script_close" not in r
+        assert "math_script_close" in r
 
     def test_msup_regular_complex_emits_close(self, profile):
         # x^{n+1} — non-atomic sup → script_close fires.

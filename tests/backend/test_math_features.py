@@ -88,18 +88,25 @@ class TestSimplifyScriptFeature:
         r = roles(cells)
         assert "math_script_close" not in r
 
-    def test_off_forces_close(self, profile, monkeypatch):
-        # Use a non-digit subscript so atomic_script_lower_digit doesn't
-        # preempt the simplify_script test (lower-digit path skips close
-        # by its own rule, independent of simplify_script).
-        monkeypatch.setitem(
-            profile.features.setdefault("math", {}), "simplify_script", False
+    def test_off_forces_close_on_digit(self, profile, monkeypatch):
+        # simplify_script gates only the bare-digit close omission. Turn the
+        # lower-digit form off too so the digit takes the number_sign path;
+        # simplify_script=off must then force the close it would otherwise omit.
+        feats = profile.features.setdefault("math", {})
+        monkeypatch.setitem(feats, "atomic_script_lower_digit", False)
+        monkeypatch.setitem(feats, "simplify_script", False)
+        cells, _ = emit(
+            mml("<math><msub><mi>x</mi><mn>1</mn></msub></math>"), profile
         )
+        assert "math_script_close" in roles(cells)
+
+    def test_single_letter_always_closes(self, profile):
+        # A single-letter script keeps the close regardless of simplify_script
+        # — only a bare digit is self-delimiting (单字母要 close，数字不要).
         cells, _ = emit(
             mml("<math><msub><mi>x</mi><mi>n</mi></msub></math>"), profile
         )
-        r = roles(cells)
-        assert "math_script_close" in r
+        assert "math_script_close" in roles(cells)
 
     def test_complex_content_always_closes(self, profile):
         cells, _ = emit(

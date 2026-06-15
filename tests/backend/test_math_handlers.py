@@ -865,49 +865,56 @@ class TestMerrorTextOnly:
 # ---------------------------------------------------------------------------
 
 
-class TestLeafLikeDefensive:
+class TestAtomicDefensive:
     """Direct unit tests against the predicate helpers. These cover
     branches the dispatcher rarely reaches because real MathML never
-    contains the degenerate shapes."""
+    contains the degenerate shapes. ``_is_atomic`` decides the script
+    close-omission: only a bare number (``<mn>``) is self-delimiting; a
+    letter (``<mi>``) is not (单字母要 close，数字不要)."""
 
-    def test_is_leaf_like_rejects_element_with_children(self):
-        from brailix.backend.math.utils import _is_leaf_like
+    def test_is_atomic_rejects_element_with_children(self):
+        from brailix.backend.math.utils import _is_atomic
 
-        elem = ET.fromstring("<mi><mi>x</mi></mi>")
-        assert _is_leaf_like(elem) is False
+        elem = ET.fromstring("<mn><mn>1</mn></mn>")
+        assert _is_atomic(elem) is False
 
-    def test_is_leaf_like_rejects_empty_text(self):
-        from brailix.backend.math.utils import _is_leaf_like
+    def test_is_atomic_rejects_empty_text(self):
+        from brailix.backend.math.utils import _is_atomic
 
-        elem = ET.Element("mi")
+        elem = ET.Element("mn")
         # No text at all.
-        assert _is_leaf_like(elem) is False
+        assert _is_atomic(elem) is False
         # Whitespace-only text strips to "".
         elem.text = "   "
-        assert _is_leaf_like(elem) is False
+        assert _is_atomic(elem) is False
 
-    def test_is_leaf_like_rejects_multi_char_mi(self):
-        from brailix.backend.math.utils import _is_leaf_like
+    def test_is_atomic_rejects_letter_mi(self):
+        from brailix.backend.math.utils import _is_atomic
 
-        elem = ET.Element("mi")
-        elem.text = "sin"
-        assert _is_leaf_like(elem) is False
+        # A single letter is NOT atomic — it keeps the script close.
+        single = ET.Element("mi")
+        single.text = "x"
+        assert _is_atomic(single) is False
+        # A multi-char identifier is likewise not atomic.
+        word = ET.Element("mi")
+        word.text = "sin"
+        assert _is_atomic(word) is False
 
-    def test_is_leaf_like_accepts_single_char_mi(self):
-        from brailix.backend.math.utils import _is_leaf_like
+    def test_is_atomic_accepts_single_digit_mn(self):
+        from brailix.backend.math.utils import _is_atomic
 
-        elem = ET.Element("mi")
-        elem.text = "x"
-        assert _is_leaf_like(elem) is True
+        elem = ET.Element("mn")
+        elem.text = "1"
+        assert _is_atomic(elem) is True
 
-    def test_is_leaf_like_accepts_multi_digit_mn(self):
-        # mn doesn't have the single-character rule that mi does — a
-        # multi-digit number is still leaf-like.
-        from brailix.backend.math.utils import _is_leaf_like
+    def test_is_atomic_accepts_multi_digit_mn(self):
+        # mn carries its own number context, so any digit run is atomic
+        # (self-delimiting) — no script close needed.
+        from brailix.backend.math.utils import _is_atomic
 
         elem = ET.Element("mn")
         elem.text = "42"
-        assert _is_leaf_like(elem) is True
+        assert _is_atomic(elem) is True
 
     def test_is_single_digit_mn_rejects_element_with_children(self):
         from brailix.backend.math.utils import _is_single_digit_mn

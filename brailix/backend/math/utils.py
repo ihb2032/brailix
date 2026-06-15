@@ -2,8 +2,8 @@
 
 Everything in here is either:
 
-* a tiny shape check on ``ET.Element`` (``_is_leaf_like`` / ``_is_atomic``
-  / ``_is_single_digit_mn``);
+* a tiny shape check on ``ET.Element`` (``_is_atomic`` /
+  ``_is_single_digit_mn``);
 * a span / cell construction helper (``_unknown_cell`` / ``_fallback_surface``
   / ``_parse_bk_span``);
 * a tag-shape unpacker (``_unpack_script`` / ``_unpack_under_over``);
@@ -115,25 +115,6 @@ def _unpack_under_over(elem: ET.Element) -> tuple[ET.Element | None, ET.Element 
     sub = kids[1] if len(kids) >= 2 else None
     sup = kids[2] if len(kids) >= 3 else None
     return base, sub, sup
-
-
-def _is_leaf_like(elem: ET.Element | None) -> bool:
-    """A 'leaf-like' element is a single-token ``<mi>`` or ``<mn>`` with
-    no children. Used by the script simplifiability check (close marker
-    omission for atomic sup/sub content)."""
-    if elem is None:
-        return False
-    if elem.tag not in ("mi", "mn"):
-        return False
-    if list(elem):
-        return False
-    text = (elem.text or "").strip()
-    if not text:
-        return False
-    # Single-token: a one-character mi, or any mn (single number).
-    if elem.tag == "mi" and len(text) > 1:
-        return False
-    return True
 
 
 _SINGLE_STRUCTURE_TAGS: frozenset[str] = frozenset({
@@ -363,9 +344,20 @@ def _fraction_renders_simple(elem: ET.Element | None, profile) -> bool:
 
 
 def _is_atomic(elem: ET.Element | None) -> bool:
-    """An element is *atomic* if it's a single-token ``<mi>`` / ``<mn>``.
-    Used by the script simplifiability check."""
-    return _is_leaf_like(elem)
+    """Whether a script's content is self-delimiting, so the trailing
+    ``script.close`` marker can be omitted.
+
+    Only a bare number (``<mn>``) qualifies: a digit run carries its own
+    number context, so ``x_1`` / ``x^{12}`` read unambiguously without a
+    close. A single *letter* (``<mi>``) does NOT — ``a^n`` / ``a_n`` keep
+    the close to bound the script (《盲文常用数学符号》: 单字母上下标要
+    close 收尾，数字不要). Used only by the regular-script close decision.
+    """
+    if elem is None or elem.tag != "mn":
+        return False
+    if list(elem):
+        return False
+    return bool((elem.text or "").strip())
 
 
 def _is_single_digit_mn(elem: ET.Element | None) -> bool:
