@@ -19,6 +19,7 @@ from brailix.input.docx._xml import (
     _R_PREFIX,
     Element,
     _local,
+    _ns_attr,
     _wrap_inline_math,
 )
 
@@ -118,7 +119,7 @@ def _find_ole_rid(obj_elem: Element) -> str | None:
             continue
         # ``r:id`` lives in the relationships namespace; some emitters
         # also write it without a prefix. Try both forms.
-        rid = child.get(_R_PREFIX + "id") or child.get("id")
+        rid = _ns_attr(child, _R_PREFIX, "id")
         if rid:
             return rid
     return None

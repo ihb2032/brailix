@@ -96,6 +96,19 @@ def _first_local(elem: Element, local_name: str) -> Element | None:
     return None
 
 
+def _ns_attr(elem: Element, prefix: str, name: str) -> str | None:
+    """Read an OOXML attribute, qualified form first then the bare fallback.
+
+    Word normally writes attributes Clark-qualified (``{ns}name``), but some
+    emitters drop the prefix and write a bare ``name`` (seen on ``w:val`` /
+    ``r:id`` / ``w:fldCharType`` ...). Every attribute read in the docx
+    adapter wants both, so centralising the two-step lookup here keeps a call
+    site from silently forgetting the unprefixed fallback. An empty-string
+    value is treated as absent — matching the old inline ``a or b`` form.
+    """
+    return elem.get(prefix + name) or elem.get(name)
+
+
 def _inline_math_as_text(omath: Element) -> str:
     """Convert an inline ``<m:oMath>`` to ``$<math>...</math>$`` text.
 
@@ -110,6 +123,17 @@ def _inline_math_as_text(omath: Element) -> str:
     omml_xml = _serialize(omath)
     mathml = math_source_registry.get("omml").to_mathml(omml_xml)
     return _wrap_inline_math(mathml)
+
+
+# Every inline-math island :func:`_wrap_inline_math` produces opens with
+# ``$<math`` and closes with ``</math>$`` — the ``$`` wrappers plus the
+# flattened MathML, which always starts ``<math`` and ends ``</math>``.
+# Consumers that *detect* such an island (``_blocks._is_inline_math``) or
+# *scan* a paragraph for them (``__init__._mtef_recovery_needed``) key off
+# these two markers; defining them next to the sole producer stops the
+# open / close literals from drifting apart across modules.
+_INLINE_MATH_OPEN = "$<math"
+_INLINE_MATH_CLOSE = "</math>$"
 
 
 def _wrap_inline_math(mathml: str) -> str:
