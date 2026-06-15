@@ -17,9 +17,11 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from brailix.backend.music import emit_tree
+from brailix.backend.music import MusicBrailleContext, emit_tree
+from brailix.backend.music.dispatch import _emit_element
 from brailix.core.config import load_profile
 from brailix.core.context import BackendContext
+from brailix.core.span import Span
 from brailix.ir.braille import BrailleCell
 
 
@@ -207,6 +209,39 @@ class TestLyricsInline:
         # translator's cell, retagged music_lyric, dots preserved
         assert lyric_cells[0].dots == (1, 3, 4, 5)
         assert "music_lyric_marker" not in _roles(cells)
+
+    def test_inline_lyric_cells_rebased_to_host_span(self, profile, monkeypatch):
+        # The injected translator runs a private frontend over a throwaway
+        # one-paragraph document, so its cells carry that document's 0-based
+        # spans. _emit_lyrics_inline must re-anchor them onto the host music
+        # node's span — otherwise a proofread double-click on a lyric jumps
+        # to the start of the file (the regression rebase_translated_cells
+        # fixes). The previous inline tests left source_span unset, so the
+        # rebase itself was unverified.
+        monkeypatch.setitem(
+            profile.features.setdefault("music", {}), "lyrics_form", "inline",
+        )
+        throwaway = BrailleCell(
+            dots=(1, 3, 4, 5), role="hanzi_final",
+            source_span=Span(0, 1), source_text="春",
+        )
+        ctx = BackendContext(
+            profile="cn_current", block_type="score",
+            options={"inline_text_translator": lambda _t: [throwaway]},
+        )
+        host = Span(100, 120)
+        mctx = MusicBrailleContext(profile=profile, backend=ctx, span=host)
+        cells: list[BrailleCell] = []
+        _emit_element(
+            cells, mctx, _note_with_lyrics("<lyric><text>春</text></lyric>")
+        )
+        lyric_cells = [c for c in cells if c.role == "music_lyric"]
+        assert lyric_cells, "expected an inline lyric cell"
+        # Re-anchored to the host span, NOT the throwaway 0-based coordinate.
+        assert all(c.source_span == host for c in lyric_cells)
+        assert all(c.source_span != Span(0, 1) for c in lyric_cells)
+        # The actual character survives the rebase — only coordinates move.
+        assert lyric_cells[0].source_text == "春"
 
     def test_inline_multiple_lyrics_each_translated(self, profile, monkeypatch):
         monkeypatch.setitem(

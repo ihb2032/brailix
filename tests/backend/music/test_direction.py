@@ -209,6 +209,33 @@ class TestWords:
         assert cells == [marker]
         assert not ctx.warnings.warnings
 
+    def test_words_translator_cells_rebased_to_host_span(self, profile):
+        from brailix.core.span import Span
+        from brailix.ir.braille import BrailleCell
+
+        # The translator's cells carry throwaway-document spans; <words>
+        # must re-anchor them onto the host span. Unlike lyrics the role is
+        # kept (the language path's own), but the span contract is the same;
+        # the existing translator test left source_span unset, so the rebase
+        # was unverified.
+        throwaway = BrailleCell(
+            dots=(1, 2, 3), role="latin", source_span=Span(0, 1), source_text="p"
+        )
+        ctx = BackendContext(
+            profile="cn_current", block_type="score",
+            options={"inline_text_translator": lambda _t: [throwaway]},
+        )
+        host = Span(200, 210)
+        mctx = MusicBrailleContext(profile=profile, backend=ctx, span=host)
+        cells: list[BrailleCell] = []
+        _emit_element(cells, mctx, _wrap_direction("<words>poco a poco</words>"))
+        assert cells, "expected translated <words> cells"
+        # Re-anchored to the host span, NOT the throwaway 0-based coordinate.
+        assert all(c.source_span == host for c in cells)
+        assert all(c.source_span != Span(0, 1) for c in cells)
+        # Role stays the language path's (not retagged music_*), per the handler.
+        assert cells[0].role == "latin"
+
     def test_empty_words_silently_skipped(self, profile, ctx):
         direction = _wrap_direction("<words></words>")
         cells = emit_tree(direction, ctx, profile)
