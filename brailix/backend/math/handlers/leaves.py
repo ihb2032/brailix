@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from brailix.backend._chars import nonstandard_char_hint
 from brailix.backend._digits import DigitRoles, emit_digit_run
 from brailix.backend._inline import rebase_translated_cells
 from brailix.backend._letters import iter_letter_runs, letter_sign_repeats
@@ -28,6 +27,7 @@ from brailix.backend.math.utils import (
     _previous_suppresses_space_before,
     _unknown_cell,
 )
+from brailix.core.chars import nonstandard_char_hint
 from brailix.ir.braille import BLANK_CELL, LINE_BREAK_CELL, BrailleCell
 
 # Math <mn> digit runs are labelled "math_digit"; the shared emitter owns

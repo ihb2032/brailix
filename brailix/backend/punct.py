@@ -17,7 +17,7 @@ was moved to its own layer in line with the architecture in
 
 from __future__ import annotations
 
-from brailix.backend._chars import nonstandard_char_hint
+from brailix.core.chars import nonstandard_char_hint
 from brailix.core.config import BrailleProfile
 from brailix.core.context import BackendContext
 from brailix.core.span import Span

@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from brailix.backend._chars import nonstandard_char_hint
 from brailix.backend.math.context import MathBrailleContext
+from brailix.core.chars import nonstandard_char_hint
 from brailix.core.span import Span
 from brailix.ir.braille import BrailleCell
 
@@ -424,7 +424,7 @@ def _unknown_cell(text: str, span: Span | None) -> BrailleCell:
 def _describe_nonstandard_char(text: str) -> str:
     """A full, actionable reason for a character the chem parser can't accept,
     for the soft-``<merror>`` warning — a full-width / zero-width hint when one
-    applies (see :func:`~brailix.backend._chars.nonstandard_char_hint`), else
+    applies (see :func:`~brailix.core.chars.nonstandard_char_hint`), else
     a plain "unsupported character". Never rewrites the input."""
     return nonstandard_char_hint(text) or f"unsupported character {text!r}"
 
