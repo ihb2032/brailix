@@ -21,10 +21,8 @@ from brailix.core.context import (
     MusicContext,
 )
 from brailix.core.defaults import (
-    DEFAULT_LANGUAGE,
     DEFAULT_NORMALIZER,
     DEFAULT_PINYIN_RESOLVER,
-    DEFAULT_PROFILE,
     DEFAULT_RENDERER,
     DEFAULT_SEGMENTER,
     DEFAULT_ZH_ANALYZER,
@@ -54,10 +52,8 @@ __all__ = (
     "MathContext",
     "MusicContext",
     # default names
-    "DEFAULT_LANGUAGE",
     "DEFAULT_NORMALIZER",
     "DEFAULT_PINYIN_RESOLVER",
-    "DEFAULT_PROFILE",
     "DEFAULT_RENDERER",
     "DEFAULT_SEGMENTER",
     "DEFAULT_ZH_ANALYZER",

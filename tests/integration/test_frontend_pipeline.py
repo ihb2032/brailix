@@ -37,7 +37,7 @@ from brailix.ir.inline import (
 def _run_frontend(text: str, *, zh: str = "char", pinyin: str = "null"):
     """The canonical frontend pipeline. Returns (children, warnings)."""
     block = Paragraph(text=text)
-    ctx = FrontendContext()
+    ctx = FrontendContext(profile="cn_current")
 
     segments = DefaultSegmenter().segment(block, ctx)
     normalized = DefaultNormalizer().normalize(segments, ctx)

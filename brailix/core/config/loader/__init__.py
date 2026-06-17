@@ -76,7 +76,6 @@ from brailix.core.config.validator import (
     _validate_profile_shape,
     validate_profile,
 )
-from brailix.core.defaults import DEFAULT_LANGUAGE
 
 PACKAGE_ROOT: Path = Path(__file__).resolve().parents[3]
 
@@ -198,7 +197,7 @@ def load_profile(
     lang_tables: dict[
         str, dict[str, dict[str, tuple[tuple[int, ...], ...]]]
     ] = {}
-    lang_subtag = payload.get("language", DEFAULT_LANGUAGE).split("-")[0]
+    lang_subtag = payload["language"].split("-")[0]
     lang_section = tables.get(lang_subtag)
     if lang_subtag != "zh" and isinstance(lang_section, dict):
         loaded: dict[str, dict[str, tuple[tuple[int, ...], ...]]] = {}
@@ -220,7 +219,7 @@ def load_profile(
 
     profile = BrailleProfile(
         name=payload.get("name", name),
-        language=payload.get("language", DEFAULT_LANGUAGE),
+        language=payload["language"],
         cell=payload.get("cell", "six_dot"),
         features=features,
         initials=initials,

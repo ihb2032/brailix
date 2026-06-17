@@ -68,7 +68,7 @@ class TestMidiAdapter:
         buf = io.BytesIO()
         mf.save(file=buf)
 
-        ctx = MusicContext(source="midi")
+        ctx = MusicContext(profile="cn_current", source="midi")
         tree = parse_music_tree(buf.getvalue(), ctx)
         assert tree is not None
         assert tree.tag == "score-partwise"
@@ -85,7 +85,7 @@ class TestMidiAdapter:
         # parse_music_tree wraps registry.get() and converts
         # MissingExtraError into a MUSIC_ADAPTER_MISSING warning, so
         # the tree comes back None but the pipeline doesn't crash.
-        ctx = MusicContext(source="midi")
+        ctx = MusicContext(profile="cn_current", source="midi")
         tree = parse_music_tree(b"\x00\x00\x00", ctx)
         assert tree is None
         codes = [w.code for w in ctx.warnings.warnings]
@@ -111,7 +111,7 @@ class TestAbcAdapter:
         # convert_abc2xml entry point — the old code probed an internal
         # 4-arg helper (abc2xml.convert), called it with one arg, hit
         # TypeError, and silently produced a music-error for every tune.
-        ctx = MusicContext(source="abc")
+        ctx = MusicContext(profile="cn_current", source="abc")
         tree = parse_music_tree("X:1\nT:probe\nM:4/4\nL:1/4\nK:C\nCDEF|\n", ctx)
         assert tree is not None
         assert tree.tag == "score-partwise"
@@ -125,7 +125,7 @@ class TestAbcAdapter:
         reason="abc-xml-converter installed — can't test missing-extra path",
     )
     def test_abc_without_converter_warns(self):
-        ctx = MusicContext(source="abc")
+        ctx = MusicContext(profile="cn_current", source="abc")
         tree = parse_music_tree("X:1\nT:Test\nM:4/4\nK:C\nCDEF|", ctx)
         assert tree is None
         codes = [w.code for w in ctx.warnings.warnings]
@@ -144,7 +144,7 @@ class TestMissingExtraPath:
 
         music_source_registry.register("fake-optional", _loader, extra="midi")
         try:
-            ctx = MusicContext(source="fake-optional")
+            ctx = MusicContext(profile="cn_current", source="fake-optional")
             tree = parse_music_tree(b"\x00", ctx)
             assert tree is None
             warning = next(

@@ -403,7 +403,10 @@ class TestMathTable:
         # Build a minimal profile without a math table.
         prof = tmp_path / "profiles" / "no_math.json"
         prof.parent.mkdir(parents=True)
-        prof.write_text(json.dumps({"name": "no_math", "tables": {}}), encoding="utf-8")
+        prof.write_text(
+            json.dumps({"name": "no_math", "language": "zh-CN", "tables": {}}),
+            encoding="utf-8",
+        )
         p = load_profile("no_math", root=tmp_path)
         assert p.math_symbols == {}
         assert p.math_functions == {}
@@ -454,7 +457,8 @@ class TestMathTable:
         prof = tmp_path / "profiles" / "no_letters.json"
         prof.parent.mkdir(parents=True)
         prof.write_text(
-            json.dumps({"name": "no_letters", "tables": {}}), encoding="utf-8"
+            json.dumps({"name": "no_letters", "language": "zh-CN", "tables": {}}),
+            encoding="utf-8",
         )
         p = load_profile("no_letters", root=tmp_path)
         assert p.latin_letters == {"lower": {}, "upper": {}}
@@ -1142,6 +1146,7 @@ def _write_split_math_demo(
     prof.write_text(
         json.dumps({
             "name": "demo",
+            "language": "zh-CN",
             "tables": {
                 "cells": "resources/cells.json",
                 "math": math_tables,
@@ -1167,7 +1172,10 @@ class TestSplitMathDemo:
     def test_no_math_section_yields_empty(self, tmp_path: Path):
         prof = tmp_path / "profiles" / "empty.json"
         prof.parent.mkdir(parents=True, exist_ok=True)
-        prof.write_text(json.dumps({"name": "empty", "tables": {}}), encoding="utf-8")
+        prof.write_text(
+            json.dumps({"name": "empty", "language": "zh-CN", "tables": {}}),
+            encoding="utf-8",
+        )
         p = load_profile("empty", root=tmp_path)
         assert p.math_symbols == {}
         assert p.math_functions == {}

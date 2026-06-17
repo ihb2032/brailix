@@ -36,7 +36,7 @@ SIMPLE_SCORE = (
 
 class TestMusicXMLAdapter:
     def test_pass_through(self):
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(SIMPLE_SCORE, ctx)
         assert isinstance(tree, ET.Element)
         assert tree.tag == "score-partwise"
@@ -52,7 +52,7 @@ class TestMusicXMLAdapter:
             '<part id="P1"/>'
             "</score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(ns_xml, ctx)
         # Local name preserved without {ns} prefix.
         assert tree.tag == "score-partwise"
@@ -60,7 +60,7 @@ class TestMusicXMLAdapter:
 
     def test_xml_declaration_stripped(self):
         xml = '<?xml version="1.0" encoding="UTF-8"?>' + SIMPLE_SCORE
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree.tag == "score-partwise"
 
@@ -72,18 +72,18 @@ class TestMusicXMLAdapter:
             '"http://www.musicxml.org/dtds/partwise.dtd">'
             + SIMPLE_SCORE
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree.tag == "score-partwise"
 
     def test_empty_input_soft_fails(self):
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree("", ctx)
         assert tree.tag == "score-partwise"
         assert tree.find("music-error") is not None
 
     def test_malformed_xml_soft_fails(self):
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree("<not-closed>", ctx)
         assert tree.tag == "score-partwise"
         err = tree.find("music-error")
@@ -95,19 +95,19 @@ class TestMusicXMLAdapter:
         # char (here form-feed) must still soft-fail to a well-formed
         # <music-error> — the surface is echoed into the wrapper, so an
         # un-stripped control char would make the re-parse raise.
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree("<score-partwise>\x0c<unclosed", ctx)
         assert tree.tag == "score-partwise"
         assert tree.find("music-error") is not None
 
     def test_malformed_with_nul_byte_soft_fails(self):
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree("<part>\x00 bad", ctx)
         assert tree.tag == "score-partwise"
         assert tree.find("music-error") is not None
 
     def test_bytes_input_utf8(self):
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(SIMPLE_SCORE.encode("utf-8"), ctx)
         assert tree.tag == "score-partwise"
 
@@ -136,27 +136,27 @@ def _make_mxl_bytes(score_xml: str, *, with_container: bool = True) -> bytes:
 class TestMxlAdapter:
     def test_unzip_and_parse(self):
         mxl_bytes = _make_mxl_bytes(SIMPLE_SCORE)
-        ctx = MusicContext(source="mxl")
+        ctx = MusicContext(profile="cn_current", source="mxl")
         tree = parse_music_tree(mxl_bytes, ctx)
         assert tree.tag == "score-partwise"
         assert tree.find(".//note/pitch/step").text == "C"
 
     def test_missing_container_falls_back_to_xml_entry(self):
         mxl_bytes = _make_mxl_bytes(SIMPLE_SCORE, with_container=False)
-        ctx = MusicContext(source="mxl")
+        ctx = MusicContext(profile="cn_current", source="mxl")
         tree = parse_music_tree(mxl_bytes, ctx)
         assert tree.tag == "score-partwise"
         # Fallback still finds score.musicxml inside the archive.
         assert tree.find(".//note/pitch/step").text == "C"
 
     def test_invalid_zip_soft_fails(self):
-        ctx = MusicContext(source="mxl")
+        ctx = MusicContext(profile="cn_current", source="mxl")
         tree = parse_music_tree(b"not a zip file", ctx)
         assert tree.tag == "score-partwise"
         assert tree.find("music-error") is not None
 
     def test_empty_bytes_soft_fails(self):
-        ctx = MusicContext(source="mxl")
+        ctx = MusicContext(profile="cn_current", source="mxl")
         tree = parse_music_tree(b"", ctx)
         assert tree.tag == "score-partwise"
         assert tree.find("music-error") is not None
@@ -164,7 +164,7 @@ class TestMxlAdapter:
     def test_string_input_routed_to_musicxml(self):
         # An .mxl source name with a string payload is a caller error,
         # but should round-trip via the MusicXML adapter (not crash).
-        ctx = MusicContext(source="mxl")
+        ctx = MusicContext(profile="cn_current", source="mxl")
         tree = parse_music_tree(SIMPLE_SCORE, ctx)
         assert tree.tag == "score-partwise"
         assert tree.find(".//note") is not None
@@ -177,7 +177,7 @@ class TestMxlAdapter:
 
 class TestPlainAdapter:
     def test_emits_music_error(self):
-        ctx = MusicContext(source="plain")
+        ctx = MusicContext(profile="cn_current", source="plain")
         tree = parse_music_tree("C D E", ctx)
         assert tree.tag == "score-partwise"
         err = tree.find("music-error")
@@ -185,7 +185,7 @@ class TestPlainAdapter:
         assert "plain music source unsupported" in err.attrib.get("data-reason", "")
 
     def test_bytes_input(self):
-        ctx = MusicContext(source="plain")
+        ctx = MusicContext(profile="cn_current", source="plain")
         tree = parse_music_tree(b"do re mi", ctx)
         assert tree.tag == "score-partwise"
         assert tree.find("music-error") is not None
@@ -201,7 +201,7 @@ class TestUnknownSource:
         # A name no adapter will ever claim — "midi"/"abc" are real
         # (optional) adapters now, so naming one of those would flip
         # this test red the moment its extra is installed.
-        ctx = MusicContext(source="nosuch")
+        ctx = MusicContext(profile="cn_current", source="nosuch")
         tree = parse_music_tree(b"\x00", ctx)
         assert tree is None
         codes = [w.code for w in ctx.warnings.warnings]
@@ -219,7 +219,7 @@ class TestNormalizer:
             "<score-partwise>\n  <part id='P1'>\n    "
             "<measure number='1'/>\n  </part>\n</score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         # No pure-whitespace text on the root.
         assert tree.text is None
@@ -228,7 +228,7 @@ class TestNormalizer:
 
     def test_attributes_preserved(self):
         xml = '<score-partwise version="4.0" xml:lang="en"><part id="P1"/></score-partwise>'
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         # The xml:lang attribute has a namespace; ElementTree leaves it
         # as ``{http://www.w3.org/XML/1998/namespace}lang`` — we don't
@@ -246,7 +246,7 @@ class TestNormalizer:
             "<note><voice>9</voice></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert [v.text for v in tree.iter("voice")] == ["1", "2", "3"]
 
@@ -257,7 +257,7 @@ class TestNormalizer:
             "<note><voice>2</voice></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert [v.text for v in tree.iter("voice")] == ["1", "2"]
 
@@ -271,7 +271,7 @@ class TestNormalizer:
             "<note><voice>7</voice></note></measure></part>"
             "</score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert [v.text for v in tree.find("part[@id='P1']").iter("voice")] == ["1"]
         assert [v.text for v in tree.find("part[@id='P2']").iter("voice")] == ["1"]
@@ -286,7 +286,7 @@ class TestNormalizer:
             "<duration>4</duration></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree.find(".//note/type").text == "half"
 
@@ -298,7 +298,7 @@ class TestNormalizer:
             "<note><duration>4</duration><type>quarter</type></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert [t.text for t in tree.iter("type")] == ["quarter"]
 
@@ -314,7 +314,7 @@ class TestNormalizer:
             "<note><duration>2</duration></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert [t.text for t in tree.iter("type")] == ["quarter", "quarter"]
 
@@ -341,7 +341,7 @@ class TestNonDecimalVoiceNumbers:
             "<note><voice>①</voice></note></measure></part>"
             "</score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree is not None
         assert [v.text for v in tree.iter("voice")] == ["1"]
@@ -364,7 +364,7 @@ class TestNonDecimalNoteValues:
             "<duration>4</duration></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree is not None
         # The score is NOT degraded — before the isdecimal fix the ValueError
@@ -382,7 +382,7 @@ class TestNonDecimalNoteValues:
             "<duration>②</duration></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree is not None
         assert not _has_music_error(tree)
@@ -403,7 +403,7 @@ class TestRaisingAdapterBackstop:
                 raise RuntimeError("boom")
 
         music_source_registry.register("boom-raise-test", _Boom)
-        ctx = MusicContext(source="boom-raise-test")
+        ctx = MusicContext(profile="cn_current", source="boom-raise-test")
         tree = parse_music_tree(b"\x00", ctx)
         assert tree is not None
         assert _has_music_error(tree)
@@ -430,7 +430,7 @@ class TestMxlUnreadableArchives:
             raise RuntimeError(f"File {name!r} is encrypted")
 
         monkeypatch.setattr(zipfile.ZipFile, "read", _boom)
-        ctx = MusicContext(source="mxl")
+        ctx = MusicContext(profile="cn_current", source="mxl")
         tree = parse_music_tree(buf.getvalue(), ctx)
         assert tree is not None
         assert _has_music_error(tree)
@@ -443,7 +443,7 @@ class TestMxlUnreadableArchives:
             "<note><duration>3</duration></note>"
             "</measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree.find(".//note/type") is None  # left for the backend
         assert "MUSIC_DURATION_AMBIGUOUS" in [
@@ -458,7 +458,7 @@ class TestMxlUnreadableArchives:
             "<note><grace/><pitch><step>C</step><octave>4</octave></pitch>"
             "</note></measure></part></score-partwise>"
         )
-        ctx = MusicContext(source="musicxml")
+        ctx = MusicContext(profile="cn_current", source="musicxml")
         tree = parse_music_tree(xml, ctx)
         assert tree.find(".//note/type") is None
         assert "MUSIC_DURATION_AMBIGUOUS" not in [

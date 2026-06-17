@@ -26,7 +26,7 @@ def profile():
 
 @pytest.fixture
 def ctx():
-    return BackendContext()
+    return BackendContext(profile="cn_current")
 
 
 class TestPunct:

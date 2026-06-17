@@ -44,7 +44,7 @@ def profile():
 
 @pytest.fixture
 def ctx():
-    return BackendContext(mode=RunMode.NORMAL, warnings=WarningCollector())
+    return BackendContext(profile="cn_current", mode=RunMode.NORMAL, warnings=WarningCollector())
 
 
 @pytest.fixture(scope="module")

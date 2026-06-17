@@ -66,6 +66,7 @@ class TestAnnotateIntegration:
 
     def test_dict_applies_after_resolver(self) -> None:
         ctx = FrontendContext(
+            profile="cn_current",
             options={
                 "pinyin_resolver": "null",
                 "user_pinyin_dict": {"重庆": "chong2 qing4"},
@@ -75,13 +76,14 @@ class TestAnnotateIntegration:
         assert out[0].pinyin == "chong2 qing4"
 
     def test_no_dict_key_is_noop(self) -> None:
-        ctx = FrontendContext(options={"pinyin_resolver": "null"})
+        ctx = FrontendContext(profile="cn_current", options={"pinyin_resolver": "null"})
         out = annotate([ChineseToken(surface="重庆")], ctx)
         # null leaves pinyin unset; nothing fills it.
         assert out[0].pinyin is None
 
     def test_empty_dict_is_noop(self) -> None:
         ctx = FrontendContext(
+            profile="cn_current",
             options={"pinyin_resolver": "null", "user_pinyin_dict": {}}
         )
         out = annotate([ChineseToken(surface="重庆")], ctx)
@@ -92,6 +94,7 @@ class TestAnnotateIntegration:
         # must not leak back into the caller's input list.
         original = ChineseToken(surface="重庆", pinyin=None)
         ctx = FrontendContext(
+            profile="cn_current",
             options={
                 "pinyin_resolver": "null",
                 "user_pinyin_dict": {"重庆": "chong2 qing4"},
@@ -143,6 +146,7 @@ class TestLowConfidenceSuppression:
     def test_suppressed_for_dict_word_only(self, monkeypatch) -> None:
         self._patch_lowconf_resolver(monkeypatch)
         ctx = FrontendContext(
+            profile="cn_current",
             options={
                 "pinyin_resolver": "lowconf",
                 "user_pinyin_dict": {"重庆": "chong2 qing4"},
@@ -158,6 +162,6 @@ class TestLowConfidenceSuppression:
 
     def test_not_suppressed_without_dict(self, monkeypatch) -> None:
         self._patch_lowconf_resolver(monkeypatch)
-        ctx = FrontendContext(options={"pinyin_resolver": "lowconf"})
+        ctx = FrontendContext(profile="cn_current", options={"pinyin_resolver": "lowconf"})
         annotate([ChineseToken(surface="重庆")], ctx)
         assert ctx.warnings.by_code("LOW_CONFIDENCE_PINYIN")

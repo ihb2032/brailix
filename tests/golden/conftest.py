@@ -44,7 +44,7 @@ def pipe() -> Pipeline:
     # jieba gives word-level tokenisation: 你好 / 世界 each become one
     # Word node, so blanks land between words instead of between every
     # hanzi. This matches what a default-install user sees.
-    return Pipeline(analyzer="jieba", resolver="pypinyin")
+    return Pipeline(profile="cn_current", analyzer="jieba", resolver="pypinyin")
 
 
 @pytest.fixture(autouse=True)

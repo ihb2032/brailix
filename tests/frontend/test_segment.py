@@ -13,7 +13,7 @@ from brailix.ir.document import Paragraph
 def _segs(text: str, *, base: int = 0):
     block = Paragraph(text=text, span=Span(base, base + len(text)) if text else None)
     seg = DefaultSegmenter()
-    return seg.segment(block, FrontendContext())
+    return seg.segment(block, FrontendContext(profile="cn_current"))
 
 
 def _types(segments) -> list[str]:
@@ -30,7 +30,7 @@ class TestEmpty:
 
     def test_none_text(self):
         block = Paragraph(text=None)
-        assert DefaultSegmenter().segment(block, FrontendContext()) == []
+        assert DefaultSegmenter().segment(block, FrontendContext(profile="cn_current")) == []
 
 
 class TestCharacterClasses:
@@ -273,12 +273,12 @@ class TestSpans:
 
     def test_base_offset_applied(self):
         block = Paragraph(text="abc", span=Span(100, 103))
-        s = DefaultSegmenter().segment(block, FrontendContext())
+        s = DefaultSegmenter().segment(block, FrontendContext(profile="cn_current"))
         assert s[0].span == Span(100, 103)
 
     def test_zero_base_when_no_block_span(self):
         block = Paragraph(text="abc")
-        s = DefaultSegmenter().segment(block, FrontendContext())
+        s = DefaultSegmenter().segment(block, FrontendContext(profile="cn_current"))
         assert s[0].span == Span(0, 3)
 
 
@@ -329,7 +329,7 @@ class TestRegistry:
     def test_registry_lookup_returns_working_segmenter(self):
         seg = segmenter_registry.get("default")
         block = Paragraph(text="我在2026")
-        out = seg.segment(block, FrontendContext())
+        out = seg.segment(block, FrontendContext(profile="cn_current"))
         assert _types(out) == ["hanzi_text", "digit_run"]
 
 

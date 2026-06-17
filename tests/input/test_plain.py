@@ -18,7 +18,7 @@ from brailix.ir.document import Paragraph
 
 class TestParsePlain:
     def test_single_paragraph_wraps_one_block_with_span(self):
-        doc = parse_plain("我在重庆。")
+        doc = parse_plain("我在重庆。", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 1
         block = doc.blocks[0]
         assert isinstance(block, Paragraph)
@@ -30,14 +30,14 @@ class TestParsePlain:
         # An empty string has nothing to point at; the wrapper keeps
         # span=None so downstream tooling doesn't render a zero-length
         # source range as if it were meaningful.
-        doc = parse_plain("")
+        doc = parse_plain("", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 1
         block = doc.blocks[0]
         assert block.text == ""
         assert block.span is None
 
     def test_whitespace_only_falls_back_to_single_block(self):
-        doc = parse_plain("   \n\n   ")
+        doc = parse_plain("   \n\n   ", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 1
         assert doc.blocks[0].text == "   \n\n   "
 
@@ -47,7 +47,7 @@ class TestParsePlain:
         assert doc.metadata["profile"] == "ueb"
 
     def test_metadata_defaults_when_not_specified(self):
-        doc = parse_plain("hi")
+        doc = parse_plain("hi", profile="cn_current", language="zh-CN")
         assert "language" in doc.metadata
         assert "profile" in doc.metadata
 
@@ -59,13 +59,13 @@ class TestParagraphSplitting:
         # newline used to be treated as a Markdown-style soft break and
         # joined into one paragraph — a one-paragraph-per-line Chinese
         # .txt rendered as one run-on braille stream.
-        doc = parse_plain("甲\n乙")
+        doc = parse_plain("甲\n乙", profile="cn_current", language="zh-CN")
         assert [b.text for b in doc.blocks] == ["甲", "乙"]
         assert doc.blocks[0].span == Span(0, 1)
         assert doc.blocks[1].span == Span(2, 3)
 
     def test_blank_line_splits_into_paragraphs(self):
-        doc = parse_plain("第一段。\n\n第二段。")
+        doc = parse_plain("第一段。\n\n第二段。", profile="cn_current", language="zh-CN")
         assert [b.text for b in doc.blocks] == ["第一段。", "第二段。"]
         # Spans point back to each paragraph's exact source range.
         assert doc.blocks[0].span == Span(0, 4)
@@ -74,24 +74,24 @@ class TestParagraphSplitting:
     def test_multiple_blank_lines_collapse_to_one_separator(self):
         # Blank lines render nothing of their own — braille paragraphs
         # are distinguished by first-line indent, not blank lines.
-        doc = parse_plain("甲\n\n\n乙")
+        doc = parse_plain("甲\n\n\n乙", profile="cn_current", language="zh-CN")
         assert [b.text for b in doc.blocks] == ["甲", "乙"]
         assert doc.blocks[1].span == Span(4, 5)
 
     def test_leading_and_trailing_blank_lines_dropped(self):
-        doc = parse_plain("\n\n甲乙\n\n")
+        doc = parse_plain("\n\n甲乙\n\n", profile="cn_current", language="zh-CN")
         assert [b.text for b in doc.blocks] == ["甲乙"]
         # Span still anchors to the real position after the leading blanks.
         assert doc.blocks[0].span == Span(2, 4)
 
     def test_blank_line_with_spaces_is_a_separator(self):
-        doc = parse_plain("甲\n  \n乙")
+        doc = parse_plain("甲\n  \n乙", profile="cn_current", language="zh-CN")
         assert [b.text for b in doc.blocks] == ["甲", "乙"]
 
     def test_line_leading_whitespace_trimmed_with_exact_span(self):
         # A hand-indented line keeps its span anchored at the first
         # non-blank character; indentation is the layout's job.
-        doc = parse_plain("  甲乙  \n丙")
+        doc = parse_plain("  甲乙  \n丙", profile="cn_current", language="zh-CN")
         assert [b.text for b in doc.blocks] == ["甲乙", "丙"]
         assert doc.blocks[0].span == Span(2, 4)
         assert doc.blocks[1].span == Span(7, 8)
@@ -100,7 +100,7 @@ class TestParagraphSplitting:
         # The proofread layer relies on text[span] == block.text so a
         # per-cell source offset maps back to the right character.
         src = "  缩进段落  \n\n第二段有内容。\n第三段。\n\n\n第四段。"
-        doc = parse_plain(src)
+        doc = parse_plain(src, profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 4
         for block in doc.blocks:
             assert block.span is not None

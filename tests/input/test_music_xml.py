@@ -76,7 +76,7 @@ class TestParseMusicxml:
     def test_musicxml_text_file(self, tmp_path):
         p = tmp_path / "song.musicxml"
         p.write_text(SIMPLE_XML, encoding="utf-8")
-        doc = parse_musicxml(p)
+        doc = parse_musicxml(p, profile="cn_current", language="zh-CN")
         assert isinstance(doc, DocumentIR)
         assert len(doc.blocks) == 1
         assert isinstance(doc.blocks[0], ScoreBlock)
@@ -86,13 +86,13 @@ class TestParseMusicxml:
     def test_xml_suffix_also_works(self, tmp_path):
         p = tmp_path / "song.xml"
         p.write_text(SIMPLE_XML, encoding="utf-8")
-        doc = parse_musicxml(p)
+        doc = parse_musicxml(p, profile="cn_current", language="zh-CN")
         assert doc.blocks[0].source == "musicxml"
 
     def test_mxl_zip_file(self, tmp_path):
         p = tmp_path / "song.mxl"
         p.write_bytes(_make_mxl_bytes(SIMPLE_XML))
-        doc = parse_musicxml(p)
+        doc = parse_musicxml(p, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], ScoreBlock)
         # Source is normalised to musicxml after unzipping (the inner
         # XML is plain text by this point).
@@ -104,7 +104,7 @@ class TestParseMusicxml:
         p = tmp_path / "song.midi"
         p.write_bytes(b"\x00")
         with pytest.raises(ValueError, match="unsupported"):
-            parse_musicxml(p)
+            parse_musicxml(p, profile="cn_current", language="zh-CN")
 
     def test_metadata_records_language_profile(self, tmp_path):
         p = tmp_path / "song.musicxml"
@@ -123,14 +123,14 @@ class TestParseFileDispatch:
     def test_musicxml_via_parse_file(self, tmp_path):
         p = tmp_path / "song.musicxml"
         p.write_text(SIMPLE_XML, encoding="utf-8")
-        doc = parse_file(p)
+        doc = parse_file(p, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], ScoreBlock)
         assert doc.blocks[0].source == "musicxml"
 
     def test_mxl_via_parse_file(self, tmp_path):
         p = tmp_path / "song.mxl"
         p.write_bytes(_make_mxl_bytes(SIMPLE_XML))
-        doc = parse_file(p)
+        doc = parse_file(p, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], ScoreBlock)
         assert "<step>C</step>" in doc.blocks[0].text
 
@@ -190,7 +190,7 @@ class TestParseScoreFileDispatch:
 
         p = tmp_path / "song.mid"
         p.write_bytes(b"MThd\x00\x00\x00\x06")
-        doc = parse_file(p)
+        doc = parse_file(p, profile="cn_current", language="zh-CN")
 
         assert isinstance(doc.blocks[0], ScoreBlock)
         # Conversion is eager: source is normalised to musicxml and the
@@ -209,7 +209,7 @@ class TestParseScoreFileDispatch:
 
         p = tmp_path / "tune.abc"
         p.write_text("X:1\nK:C\nCDEF|", encoding="utf-8")
-        doc = parse_file(p)
+        doc = parse_file(p, profile="cn_current", language="zh-CN")
 
         assert doc.blocks[0].source == "musicxml"
         # ABC is text — the adapter receives a str, not bytes.
@@ -227,7 +227,7 @@ class TestParseScoreFileDispatch:
 
         p = tmp_path / "song.midi"
         p.write_bytes(b"\x00")
-        parse_file(p)
+        parse_file(p, profile="cn_current", language="zh-CN")
         assert captured == ["midi"]
 
     def test_parse_score_file_rejects_musicxml_family(self, tmp_path):
@@ -236,7 +236,7 @@ class TestParseScoreFileDispatch:
         p = tmp_path / "song.musicxml"
         p.write_text(SIMPLE_XML, encoding="utf-8")
         with pytest.raises(ValueError, match="unsupported"):
-            parse_score_file(p)
+            parse_score_file(p, profile="cn_current", language="zh-CN")
 
 
 class TestParseScoreFileMissingExtra:
@@ -251,7 +251,7 @@ class TestParseScoreFileMissingExtra:
         p = tmp_path / "song.mid"
         p.write_bytes(b"MThd")
         with pytest.raises(MissingExtraError):
-            parse_file(p)
+            parse_file(p, profile="cn_current", language="zh-CN")
 
     @pytest.mark.skipif(
         _has("abc_xml_converter"),
@@ -261,4 +261,4 @@ class TestParseScoreFileMissingExtra:
         p = tmp_path / "tune.abc"
         p.write_text("X:1\nK:C\nCDEF|", encoding="utf-8")
         with pytest.raises(MissingExtraError):
-            parse_file(p)
+            parse_file(p, profile="cn_current", language="zh-CN")

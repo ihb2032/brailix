@@ -26,8 +26,8 @@ from brailix.ir.inline import (
 
 def _normalize_text(text: str):
     block = Paragraph(text=text)
-    segs = DefaultSegmenter().segment(block, FrontendContext())
-    return DefaultNormalizer().normalize(segs, FrontendContext())
+    segs = DefaultSegmenter().segment(block, FrontendContext(profile="cn_current"))
+    return DefaultNormalizer().normalize(segs, FrontendContext(profile="cn_current"))
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +368,6 @@ class TestRegistry:
     def test_registry_lookup_produces_working_normalizer(self):
         norm = normalizer_registry.get("default")
         block = Paragraph(text="2026年")
-        segs = DefaultSegmenter().segment(block, FrontendContext())
-        out = norm.normalize(segs, FrontendContext())
+        segs = DefaultSegmenter().segment(block, FrontendContext(profile="cn_current"))
+        out = norm.normalize(segs, FrontendContext(profile="cn_current"))
         assert isinstance(out[0], Date)

@@ -63,7 +63,6 @@ from brailix.core.context import (
 from brailix.core.defaults import (
     DEFAULT_NORMALIZER,
     DEFAULT_PINYIN_RESOLVER,
-    DEFAULT_PROFILE,
     DEFAULT_RENDERER,
     DEFAULT_SEGMENTER,
     DEFAULT_ZH_ANALYZER,
@@ -144,8 +143,10 @@ class Pipeline:
 
     Field meaning:
 
-    * ``profile`` — JSON profile under :mod:`brailix.profiles`.
-      Drives table selection and runtime features.
+    * ``profile`` — **required**; JSON profile name under
+      :mod:`brailix.profiles` (the braille standard, e.g. ``cn_current``
+      / ``cn_ncb`` / ``ja_current``). Drives table selection and runtime
+      features. There is no built-in default — the caller always chooses.
     * ``mode`` — diagnostic policy (see :class:`RunMode`).
     * ``segmenter`` / ``normalizer`` — segmenter and normalizer adapter
       names.
@@ -166,7 +167,7 @@ class Pipeline:
     no Pipeline code changes needed.
     """
 
-    profile: str = DEFAULT_PROFILE
+    profile: str
     mode: RunMode | str = RunMode.NORMAL
     segmenter: str = DEFAULT_SEGMENTER
     normalizer: str = DEFAULT_NORMALIZER

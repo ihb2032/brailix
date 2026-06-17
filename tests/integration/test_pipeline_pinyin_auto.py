@@ -40,7 +40,7 @@ def test_default_pipeline_uses_pypinyin_when_available(monkeypatch):
     monkeypatch.setitem(sys.modules, "g2pw", None)
     monkeypatch.setitem(sys.modules, "pypinyin", fake_module)
 
-    result = Pipeline().translate_text("\u6211")
+    result = Pipeline(profile="cn_current").translate_text("\u6211")
     child = result.ir.blocks[0].children[0]
     codes = {w.code for w in result.warnings}
 
@@ -62,7 +62,7 @@ def test_default_pipeline_uses_g2pw_when_available(monkeypatch):
     monkeypatch.setitem(sys.modules, "g2pw", fake_g2pw)
     monkeypatch.setitem(sys.modules, "pypinyin", None)
 
-    result = Pipeline().translate_text("\u6211")
+    result = Pipeline(profile="cn_current").translate_text("\u6211")
     child = result.ir.blocks[0].children[0]
     codes = {w.code for w in result.warnings}
 
@@ -75,7 +75,7 @@ def test_default_pipeline_falls_back_without_real_backends(monkeypatch):
     monkeypatch.setitem(sys.modules, "g2pw", None)
     monkeypatch.setitem(sys.modules, "pypinyin", None)
 
-    result = Pipeline().translate_text("\u6211")
+    result = Pipeline(profile="cn_current").translate_text("\u6211")
     child = result.ir.blocks[0].children[0]
 
     assert getattr(child, "reading", None) is None
@@ -113,6 +113,7 @@ def test_pipeline_preserves_multi_char_confidence():
     resolver_registry.register("confidence-test", _ConfidenceResolver)
     try:
         result = Pipeline(
+            profile="cn_current",
             analyzer="confidence-test",
             resolver="confidence-test",
         ).translate_text("\u4f60\u597d")

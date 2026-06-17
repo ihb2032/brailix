@@ -22,7 +22,6 @@ import pytest
 from brailix import Pipeline, __version__
 from brailix.cli import main
 from brailix.core.config import iter_builtin_profiles
-from brailix.core.defaults import DEFAULT_PROFILE
 from brailix.frontend.ja.analyzer import list_analyzers as ja_list_analyzers
 from brailix.frontend.zh.analyzer import list_analyzers as zh_list_analyzers
 from brailix.frontend.zh.pinyin import list_resolvers
@@ -35,7 +34,7 @@ from brailix.renderer import LayoutOptions, LayoutRenderer, renderer_registry
 
 def _braille(text: str, *, fmt: str = "plain", **pipe_kw: str):
     """The BrailleDocument the CLI builds for ``text`` (same Pipeline path)."""
-    pipe = Pipeline(profile=DEFAULT_PROFILE, **pipe_kw)
+    pipe = Pipeline(profile="cn_current", **pipe_kw)
     return pipe.translate_document(pipe.parse_text(text, format=fmt)).braille_ir
 
 
@@ -65,7 +64,7 @@ class _FakeTTYStdin:
 
 
 def test_translate_digits_unicode(capsys):
-    rc = main(["123"])
+    rc = main(["123", "-p", "cn_current"])
     assert rc == 0
     expected = renderer_registry.get("unicode").render(_braille("123"))
     assert capsys.readouterr().out == expected + "\n"
@@ -74,7 +73,7 @@ def test_translate_digits_unicode(capsys):
 
 def test_translate_to_brf_file(tmp_path):
     out = tmp_path / "out.brf"
-    rc = main(["123", "--to", "brf", "-o", str(out)])
+    rc = main(["123", "--to", "brf", "-o", str(out), "-p", "cn_current"])
     assert rc == 0
     expected = renderer_registry.get("brf").render(_braille("123"))
     assert isinstance(expected, bytes)
@@ -82,7 +81,7 @@ def test_translate_to_brf_file(tmp_path):
 
 
 def test_translate_cells_is_json(capsys):
-    rc = main(["123", "--to", "cells"])
+    rc = main(["123", "--to", "cells", "-p", "cn_current"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["type"] == "braille_document"
@@ -91,7 +90,7 @@ def test_translate_cells_is_json(capsys):
 
 def test_unicode_to_file(tmp_path):
     out = tmp_path / "out.txt"
-    rc = main(["123", "-o", str(out)])
+    rc = main(["123", "-o", str(out), "-p", "cn_current"])
     assert rc == 0
     expected = renderer_registry.get("unicode").render(_braille("123"))
     assert out.read_text(encoding="utf-8") == expected + "\n"
@@ -103,7 +102,7 @@ def test_unicode_to_file(tmp_path):
 
 
 def test_width_triggers_layout(capsys):
-    rc = main(["ab cd ef gh ij", "-w", "5"])
+    rc = main(["ab cd ef gh ij", "-w", "5", "-p", "cn_current"])
     assert rc == 0
     expected = LayoutRenderer(
         options=LayoutOptions(line_width=5), format="unicode"
@@ -112,7 +111,7 @@ def test_width_triggers_layout(capsys):
 
 
 def test_to_layout_uses_default_width(capsys):
-    rc = main(["ab cd ef", "--to", "layout"])
+    rc = main(["ab cd ef", "--to", "layout", "-p", "cn_current"])
     assert rc == 0
     expected = LayoutRenderer(
         options=LayoutOptions(line_width=40), format="unicode"
@@ -122,7 +121,7 @@ def test_to_layout_uses_default_width(capsys):
 
 def test_brf_with_width_is_wrapped_bytes(tmp_path):
     out = tmp_path / "out.brf"
-    rc = main(["ab cd ef gh ij", "--to", "brf", "-w", "5", "-o", str(out)])
+    rc = main(["ab cd ef gh ij", "--to", "brf", "-w", "5", "-o", str(out), "-p", "cn_current"])
     assert rc == 0
     expected = LayoutRenderer(
         options=LayoutOptions(line_width=5), format="brf"
@@ -139,9 +138,9 @@ def test_brf_with_width_is_wrapped_bytes(tmp_path):
 def test_file_input_plain(tmp_path, capsys):
     src = tmp_path / "in.txt"
     src.write_text("123", encoding="utf-8")
-    rc = main(["-f", str(src)])
+    rc = main(["-f", str(src), "-p", "cn_current"])
     assert rc == 0
-    pipe = Pipeline(profile=DEFAULT_PROFILE)
+    pipe = Pipeline(profile="cn_current")
     expected = pipe.translate_file(str(src)).render("unicode")
     assert capsys.readouterr().out == expected + "\n"
 
@@ -149,16 +148,16 @@ def test_file_input_plain(tmp_path, capsys):
 def test_file_input_markdown_by_suffix(tmp_path, capsys):
     src = tmp_path / "in.md"
     src.write_text("# Title\n\nbody text\n", encoding="utf-8")
-    rc = main(["-f", str(src)])
+    rc = main(["-f", str(src), "-p", "cn_current"])
     assert rc == 0
-    pipe = Pipeline(profile=DEFAULT_PROFILE)
+    pipe = Pipeline(profile="cn_current")
     expected = pipe.translate_file(str(src)).render("unicode")
     assert capsys.readouterr().out == expected + "\n"
 
 
 def test_stdin_buffer(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", _FakeBufferStdin(b"123"))
-    rc = main([])
+    rc = main(["-p", "cn_current"])
     assert rc == 0
     expected = renderer_registry.get("unicode").render(_braille("123"))
     assert capsys.readouterr().out == expected + "\n"
@@ -167,7 +166,7 @@ def test_stdin_buffer(monkeypatch, capsys):
 def test_stdin_text_fallback(monkeypatch, capsys):
     # A stdin without a .buffer (e.g. io.StringIO) takes the text-read path.
     monkeypatch.setattr("sys.stdin", io.StringIO("123"))
-    rc = main([])
+    rc = main(["-p", "cn_current"])
     assert rc == 0
     expected = renderer_registry.get("unicode").render(_braille("123"))
     assert capsys.readouterr().out == expected + "\n"
@@ -175,7 +174,7 @@ def test_stdin_text_fallback(monkeypatch, capsys):
 
 def test_in_format_markdown_for_stdin(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO("# Title\n\nbody\n"))
-    rc = main(["--in-format", "markdown"])
+    rc = main(["--in-format", "markdown", "-p", "cn_current"])
     assert rc == 0
     expected = renderer_registry.get("unicode").render(
         _braille("# Title\n\nbody\n", fmt="markdown")
@@ -185,7 +184,7 @@ def test_in_format_markdown_for_stdin(monkeypatch, capsys):
 
 def test_positional_text_wins_over_stdin(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", _FakeBufferStdin(b"456"))
-    rc = main(["123"])
+    rc = main(["123", "-p", "cn_current"])
     assert rc == 0
     expected = renderer_registry.get("unicode").render(_braille("123"))
     assert capsys.readouterr().out == expected + "\n"
@@ -197,7 +196,7 @@ def test_positional_text_wins_over_stdin(monkeypatch, capsys):
 
 
 def test_chinese_char_null_matches_library(capsys):
-    args = ["中文", "--analyzer", "char", "--resolver", "null"]
+    args = ["中文", "--analyzer", "char", "--resolver", "null", "-p", "cn_current"]
     rc = main(args)
     assert rc == 0
     expected = renderer_registry.get("unicode").render(
@@ -207,14 +206,14 @@ def test_chinese_char_null_matches_library(capsys):
 
 
 def test_warnings_go_to_stderr(capsys):
-    rc = main(["中", "--analyzer", "char", "--resolver", "null"])
+    rc = main(["中", "--analyzer", "char", "--resolver", "null", "-p", "cn_current"])
     assert rc == 0
     err = capsys.readouterr().err
     assert "MISSING_PINYIN" in err  # a real warning surfaced
 
 
 def test_quiet_suppresses_warnings(capsys):
-    rc = main(["中", "--analyzer", "char", "--resolver", "null", "-q"])
+    rc = main(["中", "--analyzer", "char", "--resolver", "null", "-q", "-p", "cn_current"])
     assert rc == 0
     assert capsys.readouterr().err == ""
 
@@ -235,7 +234,7 @@ def test_list_profiles(capsys):
     assert rc == 0
     out = capsys.readouterr().out.split()
     assert out == iter_builtin_profiles()
-    assert DEFAULT_PROFILE in out
+    assert "cn_current" in out
 
 
 def test_list_renderers(capsys):
@@ -265,7 +264,7 @@ def test_list_analyzers_groups_languages(capsys):
 
 
 def test_missing_file_exits_1(tmp_path, capsys):
-    rc = main(["-f", str(tmp_path / "nope.md")])
+    rc = main(["-f", str(tmp_path / "nope.md"), "-p", "cn_current"])
     assert rc == 1
     assert "brailix:" in capsys.readouterr().err
 
@@ -280,14 +279,14 @@ def test_unknown_profile_exits_1(capsys):
 
 def test_unknown_analyzer_exits_2(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        main(["123", "-a", "bogus"])
+        main(["123", "-a", "bogus", "-p", "cn_current"])
     assert excinfo.value.code == 2
     assert "unknown analyzer" in capsys.readouterr().err
 
 
 def test_unknown_resolver_exits_2(capsys):
     with pytest.raises(SystemExit) as excinfo:
-        main(["123", "-r", "bogus"])
+        main(["123", "-r", "bogus", "-p", "cn_current"])
     assert excinfo.value.code == 2
     assert "unknown resolver" in capsys.readouterr().err
 
@@ -311,10 +310,18 @@ def test_cells_with_layout_option_exits_2(capsys):
     assert "cells" in capsys.readouterr().err
 
 
+def test_missing_profile_is_usage_error():
+    # A translation run without --profile is a usage error (the flag is
+    # required); the CLI must exit 2 rather than silently picking a default.
+    with pytest.raises(SystemExit) as excinfo:
+        main(["123"])
+    assert excinfo.value.code == 2
+
+
 def test_no_input_is_usage_error(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", _FakeTTYStdin())
     with pytest.raises(SystemExit) as excinfo:
-        main([])
+        main(["-p", "cn_current"])
     assert excinfo.value.code == 2
     assert "no input" in capsys.readouterr().err
 
@@ -324,13 +331,13 @@ def test_invalid_utf8_stdin_exits_1(monkeypatch, capsys):
     # console) must surface as a clean exit-1 error, not an uncaught
     # UnicodeDecodeError traceback. b"\xc4\xe3\xba\xc3" is 你好 in GBK.
     monkeypatch.setattr("sys.stdin", _FakeBufferStdin(b"\xc4\xe3\xba\xc3"))
-    rc = main([])
+    rc = main(["-p", "cn_current"])
     assert rc == 1
     assert "brailix:" in capsys.readouterr().err
 
 
 def test_page_numbers_without_height_warns(capsys):
-    rc = main(["123", "--page-numbers"])
+    rc = main(["123", "--page-numbers", "-p", "cn_current"])
     assert rc == 0
     assert "--page-numbers" in capsys.readouterr().err
 

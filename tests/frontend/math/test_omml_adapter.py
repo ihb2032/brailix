@@ -38,7 +38,7 @@ def _shape_tree(formula: str) -> str:
     e.g. ``mfrac(mi:x,mi:y)`` / ``msup(mi:x,mn:2)``. Unlike substring
     asserts, this catches structural / ordering mistranslations that
     still emit the right tags — the OMML path has no real-docx fixture."""
-    root = parse_math_tree(formula, MathContext(source="omml", warnings=WarningCollector()))
+    root = parse_math_tree(formula, MathContext(profile="cn_current", source="omml", warnings=WarningCollector()))
 
     def fmt(el: ET.Element) -> str:
         kids = list(el)

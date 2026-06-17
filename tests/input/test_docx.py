@@ -64,7 +64,7 @@ def _island_mathml(island: str) -> str:
     from brailix.frontend.math import parse_math_tree
 
     source, payload = inline_math.unwrap(island)
-    tree = parse_math_tree(payload, MathContext(source=source))
+    tree = parse_math_tree(payload, MathContext(source=source, profile="cn_current"))
     return "" if tree is None else ET.tostring(tree, encoding="unicode")
 
 
@@ -132,7 +132,7 @@ class TestStructuralBlocks:
         doc.add_paragraph("我在重庆。")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         # python-docx adds a trailing blank paragraph by default
         # (it's the cursor position); filter empty paragraphs.
         non_empty = [
@@ -152,7 +152,7 @@ class TestStructuralBlocks:
         doc.add_paragraph("正文。")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         headings = [b for b in result.blocks if isinstance(b, Heading)]
         assert [h.level for h in headings] == [1, 2]
         assert [h.text for h in headings] == ["第一章", "第一节"]
@@ -166,7 +166,7 @@ class TestStructuralBlocks:
         doc.add_paragraph("三项", style="List Bullet")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         lists = [b for b in result.blocks if isinstance(b, List)]
         assert len(lists) == 1
         assert [it.text for it in lists[0].items] == ["一项", "二项", "三项"]
@@ -181,7 +181,7 @@ class TestStructuralBlocks:
         t.rows[1].cells[1].text = "丁"
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         tables = [b for b in result.blocks if isinstance(b, Table)]
         assert len(tables) == 1
         rows = tables[0].rows
@@ -202,7 +202,7 @@ class TestStructuralBlocks:
         nested.cell(0, 1).text = "内乙"
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         tables = [b for b in result.blocks if isinstance(b, Table)]
         assert len(tables) == 1
         cell_text = tables[0].rows[0].cells[0].text or ""
@@ -285,7 +285,7 @@ class TestParagraphAlignment:
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.save(path)
 
-        assert self._only_paragraph(parse_docx(path)).align == "center"
+        assert self._only_paragraph(parse_docx(path, profile="cn_current", language="zh-CN")).align == "center"
 
     def test_right_aligned_paragraph_carries_right(self, tmp_path: Path) -> None:
         from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -295,7 +295,7 @@ class TestParagraphAlignment:
         para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         doc.save(path)
 
-        assert self._only_paragraph(parse_docx(path)).align == "right"
+        assert self._only_paragraph(parse_docx(path, profile="cn_current", language="zh-CN")).align == "right"
 
     def test_justified_paragraph_has_no_align(self, tmp_path: Path) -> None:
         # Braille has no justification convention, so "both" normalises to
@@ -307,14 +307,14 @@ class TestParagraphAlignment:
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         doc.save(path)
 
-        assert self._only_paragraph(parse_docx(path)).align is None
+        assert self._only_paragraph(parse_docx(path, profile="cn_current", language="zh-CN")).align is None
 
     def test_default_paragraph_has_no_align(self, tmp_path: Path) -> None:
         path, doc = _make_docx(tmp_path)
         doc.add_paragraph("普通左对齐段落")
         doc.save(path)
 
-        assert self._only_paragraph(parse_docx(path)).align is None
+        assert self._only_paragraph(parse_docx(path, profile="cn_current", language="zh-CN")).align is None
 
     def test_centered_heading_carries_center(self, tmp_path: Path) -> None:
         # Alignment is recorded regardless of block kind: a centred level-2
@@ -327,7 +327,7 @@ class TestParagraphAlignment:
         h.alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.save(path)
 
-        headings = [b for b in parse_docx(path).blocks if isinstance(b, Heading)]
+        headings = [b for b in parse_docx(path, profile="cn_current", language="zh-CN").blocks if isinstance(b, Heading)]
         assert len(headings) == 1
         assert headings[0].level == 2
         assert headings[0].align == "center"
@@ -348,7 +348,7 @@ class TestAlignmentEndToEnd:
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.save(path)
 
-        ir = parse_docx(path)
+        ir = parse_docx(path, profile="cn_current", language="zh-CN")
         result = Pipeline(profile="cn_current").translate_document(ir)
         out = LayoutRenderer(options=LayoutOptions(line_width=20)).render(
             result.braille_ir
@@ -381,7 +381,7 @@ class TestMath:
         ))
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         math_blocks = [b for b in result.blocks if isinstance(b, MathBlock)]
         assert len(math_blocks) == 1
         assert math_blocks[0].source == "omml"
@@ -407,7 +407,7 @@ class TestMath:
         para.add_run(" 是平方。")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         # The inline equation should sit in the same paragraph text as
         # the surrounding Chinese.
@@ -554,7 +554,7 @@ class TestMathTypeOLE:
         para.add_run(" 是平方。")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "公式" in joined
@@ -585,7 +585,7 @@ class TestMathTypeOLE:
         _embed_ole_equation(doc, para, blob)
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         joined = "\n".join(
             p.text or "" for p in result.blocks if isinstance(p, Paragraph)
         )
@@ -609,7 +609,7 @@ class TestMathTypeOLE:
         )
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "<msup>" in joined
@@ -626,7 +626,7 @@ class TestMathTypeOLE:
         para.add_run(" 末尾")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "文本" in joined
@@ -646,7 +646,7 @@ class TestMathTypeOLE:
         _embed_ole_equation(doc, para, bytes([5, 1, 0, 11, 0, 0xFF, 0xFF]))
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "$<math" in joined
@@ -660,7 +660,7 @@ class TestMathTypeOLE:
         doc.add_paragraph("纯文本")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         # Build the blob map manually to confirm it's empty.
         from brailix.input.docx import _build_ole_blob_map
         assert _build_ole_blob_map(doc) == {}
@@ -722,7 +722,7 @@ class TestAlternateContent:
         para._p.append(etree.fromstring(alt_xml))
         doc.save(path)
 
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         assert "前" in text
         assert "$<math" in text and "</math>$" in text
         assert "<msup>" in text
@@ -749,7 +749,7 @@ class TestAlternateContent:
         para._p.append(etree.fromstring(alt_xml))
         doc.save(path)
 
-        assert "<msup>" in _para_text(parse_docx(path))
+        assert "<msup>" in _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
 
     def test_choice_only_omml_is_extracted(self, tmp_path: Path) -> None:
         # No Fallback at all → the adapter descends into Choice and surfaces
@@ -770,7 +770,7 @@ class TestAlternateContent:
         para._p.append(etree.fromstring(alt_xml))
         doc.save(path)
 
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         assert "式" in text
         # The Choice's inline OMML is deferred, like any other inline OMML.
         islands = _inline_math_islands(text)
@@ -839,7 +839,7 @@ class TestEqField:
         para.add_run(" 是二分之一")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "分数" in joined
@@ -866,7 +866,7 @@ class TestEqField:
         para.add_run(" 的解集是____.")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         # Surrounding Chinese text survived.
@@ -896,7 +896,7 @@ class TestEqField:
         )
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "CACHED_RESULT_TEXT" not in joined
@@ -916,7 +916,7 @@ class TestEqField:
         para.add_run("后")
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "前" in joined
@@ -939,7 +939,7 @@ class TestEqField:
         para._p.append(etree.fromstring(fld_xml))
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         islands = _inline_math_islands(joined)
@@ -958,7 +958,7 @@ class TestMathTypeFallback:
         doc.add_paragraph("x")
         doc.save(path)
         with pytest.raises(ValueError):
-            parse_docx(path, mathtype_fallback="bogus")
+            parse_docx(path, mathtype_fallback="bogus", profile="cn_current", language="zh-CN")
 
     def test_libreoffice_mode_without_converter_raises(
         self, tmp_path: Path, monkeypatch
@@ -973,7 +973,7 @@ class TestMathTypeFallback:
         doc.add_paragraph("x")
         doc.save(path)
         with pytest.raises(ParseError) as exc:
-            parse_docx(path, mathtype_fallback="libreoffice")
+            parse_docx(path, mathtype_fallback="libreoffice", profile="cn_current", language="zh-CN")
         assert "LibreOffice" in str(exc.value)
 
     def test_libreoffice_mode_invokes_converter(
@@ -1007,7 +1007,7 @@ class TestMathTypeFallback:
         doc.add_paragraph("回归测试")
         doc.save(path)
 
-        result = parse_docx(path, mathtype_fallback="libreoffice")
+        result = parse_docx(path, mathtype_fallback="libreoffice", profile="cn_current", language="zh-CN")
         assert len(calls) == 1
         assert "--convert-to" in calls[0]
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
@@ -1038,7 +1038,7 @@ class TestMathTypeFallback:
         )
         doc.save(path)
 
-        result = parse_docx(path, mathtype_fallback="auto")
+        result = parse_docx(path, mathtype_fallback="auto", profile="cn_current", language="zh-CN")
         assert calls == []
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
@@ -1108,7 +1108,7 @@ class TestMathTypeFallback:
         )
         doc.save(path)
 
-        result = parse_docx(path, mathtype_fallback="auto")
+        result = parse_docx(path, mathtype_fallback="auto", profile="cn_current", language="zh-CN")
         tables = [b for b in result.blocks if isinstance(b, Table)]
         assert tables
         cell_text = tables[0].rows[0].cells[0].text or ""
@@ -1155,7 +1155,7 @@ class TestMathTypeFallback:
         _embed_ole_equation(doc, para, bytes([5, 1, 0, 11, 0, 0xFF, 0xFF]))
         doc.save(path)
 
-        result = parse_docx(path, mathtype_fallback="auto")
+        result = parse_docx(path, mathtype_fallback="auto", profile="cn_current", language="zh-CN")
         assert len(calls) == 1
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
@@ -1210,7 +1210,7 @@ class TestMathTypeFallback:
         _embed_ole_equation(doc, para, b"\x00not-mtef-not-cfb")
         doc.save(path)
 
-        result = parse_docx(path, mathtype_fallback="auto")
+        result = parse_docx(path, mathtype_fallback="auto", profile="cn_current", language="zh-CN")
         assert len(calls) == 1
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
@@ -1239,7 +1239,7 @@ class TestMathTypeFallback:
         )
         doc.save(path)
 
-        result = parse_docx(path, mathtype_fallback="auto")
+        result = parse_docx(path, mathtype_fallback="auto", profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "图表" in joined
@@ -1256,7 +1256,7 @@ class TestMathTypeFallback:
         para._p.append(_omml_fragment("<m:r><m:t>a$b</m:t></m:r>"))
         doc.save(path)
 
-        result = parse_docx(path)
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         # The island's two wrappers are the only raw dollars; the inner one
@@ -1290,7 +1290,7 @@ class TestMathTypeFallback:
         _embed_ole_equation(doc, para, bytes([5, 1, 0, 11, 0, 0xFF, 0xFF]))
         doc.save(path)
 
-        result = parse_docx(path, mathtype_fallback="auto")
+        result = parse_docx(path, mathtype_fallback="auto", profile="cn_current", language="zh-CN")
         paragraphs = [b for b in result.blocks if isinstance(b, Paragraph)]
         joined = "\n".join(p.text or "" for p in paragraphs)
         assert "merror" in joined  # native fallback kept
@@ -1319,7 +1319,7 @@ class TestParseDocLegacy:
         path = tmp_path / "legacy.doc"
         path.write_bytes(b"\xd0\xcf\x11\xe0")  # OLE magic bytes
         with pytest.raises(ParseError) as exc:
-            parse_doc(path)
+            parse_doc(path, profile="cn_current", language="zh-CN")
         assert ".doc" in str(exc.value)
         assert "LibreOffice" in str(exc.value) or "soffice" in str(exc.value)
 
@@ -1341,7 +1341,7 @@ class TestParseFileDispatch:
         doc.add_paragraph("正文。")
         doc.save(path)
 
-        result = parse_file(path)
+        result = parse_file(path, profile="cn_current", language="zh-CN")
         headings = [b for b in result.blocks if isinstance(b, Heading)]
         assert len(headings) == 1
         assert headings[0].text == "章节"
@@ -1356,7 +1356,7 @@ class TestParseFileDispatch:
         doc.add_paragraph("hi")
         doc.save(path)
 
-        result = parse_file(path)
+        result = parse_file(path, profile="cn_current", language="zh-CN")
         # Just confirm the parser ran (no exception).
         assert result.blocks  # not empty
 
@@ -1369,7 +1369,7 @@ class TestParseFileDispatch:
 class TestErrorPaths:
     def test_missing_file_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
-            parse_docx(tmp_path / "nope.docx")
+            parse_docx(tmp_path / "nope.docx", profile="cn_current", language="zh-CN")
 
     def test_not_a_zip_raises_parse_error(self, tmp_path: Path) -> None:
         from brailix.core.errors import ParseError
@@ -1377,7 +1377,7 @@ class TestErrorPaths:
         bogus = tmp_path / "fake.docx"
         bogus.write_bytes(b"not a real zip archive")
         with pytest.raises(ParseError):
-            parse_docx(bogus)
+            parse_docx(bogus, profile="cn_current", language="zh-CN")
 
 
 # ---------------------------------------------------------------------------
@@ -1419,7 +1419,7 @@ class TestVertAlignScripts:
         para = doc.add_paragraph()
         _append_script_runs(para, [("x", None), ("2", "superscript")])
         doc.save(path)
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         # Deferred: the cluster is a linearised ``script_cluster`` island the
         # frontend converts to ``<msup>`` — input builds no MathML itself.
         mathml = _island_mathml(_inline_math_islands(text)[0])
@@ -1433,7 +1433,7 @@ class TestVertAlignScripts:
             para, [("H", None), ("2", "subscript"), ("O", None)]
         )
         doc.save(path)
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         mathml = _island_mathml(_inline_math_islands(text)[0])
         assert "<msub>" in mathml
         assert "<mi>H</mi>" in mathml and "<mn>2</mn>" in mathml
@@ -1448,7 +1448,7 @@ class TestVertAlignScripts:
         _append_script_runs(para, [("x", None), ("2", "superscript")])
         para.add_run(" 平方米")
         doc.save(path)
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         assert "面积是" in text and "平方米" in text
         islands = _inline_math_islands(text)
         assert len(islands) == 1
@@ -1461,7 +1461,7 @@ class TestVertAlignScripts:
         para = doc.add_paragraph()
         _append_script_runs(para, [("m", None), ("2", "superscript")])
         doc.save(path)
-        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path)))[0])
+        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path, profile="cn_current", language="zh-CN")))[0])
         assert "<msup>" in mathml and "<mi>m</mi>" in mathml
 
     def test_subscript_then_superscript_is_msubsup(self, tmp_path: Path) -> None:
@@ -1471,7 +1471,7 @@ class TestVertAlignScripts:
             para, [("x", None), ("1", "subscript"), ("2", "superscript")]
         )
         doc.save(path)
-        islands = _inline_math_islands(_para_text(parse_docx(path)))
+        islands = _inline_math_islands(_para_text(parse_docx(path, profile="cn_current", language="zh-CN")))
         assert "<msubsup>" in _island_mathml(islands[0])
 
     def test_negative_exponent_uses_canonical_minus(self, tmp_path: Path) -> None:
@@ -1483,7 +1483,7 @@ class TestVertAlignScripts:
             para, [("10", None), ("-", "superscript"), ("3", "superscript")]
         )
         doc.save(path)
-        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path)))[0])
+        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path, profile="cn_current", language="zh-CN")))[0])
         assert "<msup>" in mathml and "−" in mathml and "<mn>3</mn>" in mathml
 
     def test_plain_text_without_vertalign_unchanged(self, tmp_path: Path) -> None:
@@ -1491,7 +1491,7 @@ class TestVertAlignScripts:
         path, doc = _make_docx(tmp_path)
         doc.add_paragraph("H2O 是水")
         doc.save(path)
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         assert "$<math" not in text and "H2O" in text
 
     def test_super_run_without_text_is_safe(self, tmp_path: Path) -> None:
@@ -1508,7 +1508,7 @@ class TestVertAlignScripts:
         for run in list(wrapper):
             para._p.append(run)
         doc.save(path)
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         assert "见正文" in text and "$<math" not in text
 
     def test_cluster_adjacent_to_omml_no_double_dollar(self, tmp_path: Path) -> None:
@@ -1520,7 +1520,7 @@ class TestVertAlignScripts:
         _append_script_runs(para, [("a", None), ("2", "superscript")])
         para._p.append(_omml_fragment("<m:r><m:t>z</m:t></m:r>"))
         doc.save(path)
-        assert "$$" not in _para_text(parse_docx(path))
+        assert "$$" not in _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
 
     def test_end_to_end_braille_superscript(self, tmp_path: Path) -> None:
         from brailix.pipeline import Pipeline
@@ -1529,7 +1529,7 @@ class TestVertAlignScripts:
         para = doc.add_paragraph()
         _append_script_runs(para, [("x", None), ("2", "superscript")])
         doc.save(path)
-        result = Pipeline(profile="cn_current").translate_document(parse_docx(path))
+        result = Pipeline(profile="cn_current").translate_document(parse_docx(path, profile="cn_current", language="zh-CN"))
         # ⠰⠭⠌⠆ : latin-x prefix, superscript marker, lowered 2.
         assert "⠰⠭⠌⠆" in result.render("unicode")
 
@@ -1547,7 +1547,7 @@ class TestVertAlignChemistry:
             para, [("H", None), ("2", "subscript"), ("O", None)]
         )
         doc.save(path)
-        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path)))[0])
+        mathml = _island_mathml(_inline_math_islands(_para_text(parse_docx(path, profile="cn_current", language="zh-CN")))[0])
         assert "data-bk-chem" not in mathml and "<msub>" in mathml
 
     def test_on_h2o_tagged_chem(self, tmp_path: Path) -> None:
@@ -1557,7 +1557,7 @@ class TestVertAlignChemistry:
             para, [("H", None), ("2", "subscript"), ("O", None)]
         )
         doc.save(path)
-        text = _para_text(parse_docx(path, chem_detection=True))
+        text = _para_text(parse_docx(path, chem_detection=True, profile="cn_current", language="zh-CN"))
         assert 'data-bk-chem="1"' in _island_mathml(_inline_math_islands(text)[0])
 
     def test_single_letter_variable_stays_math(self, tmp_path: Path) -> None:
@@ -1568,7 +1568,7 @@ class TestVertAlignChemistry:
         _append_script_runs(para, [("V", None), ("1", "subscript")])
         doc.save(path)
         mathml = _island_mathml(
-            _inline_math_islands(_para_text(parse_docx(path, chem_detection=True)))[0]
+            _inline_math_islands(_para_text(parse_docx(path, chem_detection=True, profile="cn_current", language="zh-CN")))[0]
         )
         assert "data-bk-chem" not in mathml and "<msub>" in mathml
 
@@ -1578,7 +1578,7 @@ class TestVertAlignChemistry:
         _append_script_runs(para, [("x", None), ("2", "superscript")])
         doc.save(path)
         mathml = _island_mathml(
-            _inline_math_islands(_para_text(parse_docx(path, chem_detection=True)))[0]
+            _inline_math_islands(_para_text(parse_docx(path, chem_detection=True, profile="cn_current", language="zh-CN")))[0]
         )
         assert "data-bk-chem" not in mathml and "<msup>" in mathml
 
@@ -1590,7 +1590,7 @@ class TestVertAlignChemistry:
             [("Ca", None), ("2", "superscript"), ("+", "superscript")],
         )
         doc.save(path)
-        text = _para_text(parse_docx(path, chem_detection=True))
+        text = _para_text(parse_docx(path, chem_detection=True, profile="cn_current", language="zh-CN"))
         assert 'data-bk-chem="1"' in _island_mathml(_inline_math_islands(text)[0])
 
     def test_end_to_end_chem_braille_h2o(self, tmp_path: Path) -> None:
@@ -1602,7 +1602,7 @@ class TestVertAlignChemistry:
             para, [("H", None), ("2", "subscript"), ("O", None)]
         )
         doc.save(path)
-        doc_ir = parse_docx(path, chem_detection=True)
+        doc_ir = parse_docx(path, chem_detection=True, profile="cn_current", language="zh-CN")
         result = Pipeline(profile="cn_current").translate_document(doc_ir)
         # ⠸⠓⠆⠕ : chemical-formula indicator ⠸, H, lowered 2, O.
         assert "⠸⠓⠆⠕" in result.render("unicode")
@@ -1681,7 +1681,7 @@ class TestRunBreaksAndHyperlink:
             para._p.append(r)
         doc.save(path)
 
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         assert "甲\n乙" in text   # <w:br> → newline
         assert "丙 丁" in text     # <w:tab> → space
 
@@ -1696,7 +1696,7 @@ class TestRunBreaksAndHyperlink:
         para._p.append(etree.fromstring(hyper_xml))
         doc.save(path)
 
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         assert "看" in text and "链接文字" in text
 
     def test_hyperlink_wrapped_math_surfaces(self, tmp_path: Path) -> None:
@@ -1714,7 +1714,7 @@ class TestRunBreaksAndHyperlink:
         para._p.append(etree.fromstring(hyper_xml))
         doc.save(path)
 
-        text = _para_text(parse_docx(path))
+        text = _para_text(parse_docx(path, profile="cn_current", language="zh-CN"))
         # Inline OMML inside a hyperlink defers like any other inline OMML.
         islands = _inline_math_islands(text)
         assert len(islands) == 1 and inline_math.unwrap(islands[0])[0] == "omml"

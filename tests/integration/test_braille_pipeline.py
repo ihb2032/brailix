@@ -32,7 +32,7 @@ from brailix.renderer.unicode_braille import UnicodeBrailleRenderer
 class TestPipelineSmoke:
     def test_pure_punct_through_pipeline(self):
         """Punct survives the full pipeline as Unicode braille."""
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("，。！？")
         # ， → 1 cell + space (2);
         # 。 → 2 cells, no space (2);
@@ -44,7 +44,7 @@ class TestPipelineSmoke:
         assert "UNKNOWN_PUNCT" not in codes
 
     def test_number_through_pipeline(self):
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("2026")
         # number_sign + 4 digits
         assert len(result.render()) == 5
@@ -55,7 +55,7 @@ class TestPipelineSmoke:
         # UNKNOWN_PUNCT. After the fix it should go through the Latin/Greek
         # letter path, emitting the Greek lowercase sign ⠨ + the τ cell ⠞,
         # and produce no UNKNOWN_PUNCT warning.
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("τ")
         codes = {w.code for w in result.warnings}
         assert "UNKNOWN_PUNCT" not in codes
@@ -64,7 +64,7 @@ class TestPipelineSmoke:
         assert rendered == "⠨⠞"
 
     def test_round_trip_to_proofread_json(self):
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("。")
         payload = result.proofread_json()
         assert payload["text"] == "。"
@@ -81,7 +81,7 @@ class TestLetterHanziConnector:
     resolver is installed (the connector is independent of pinyin)."""
 
     def _cells(self, text: str):
-        result = Pipeline().translate_text(text)
+        result = Pipeline(profile="cn_current").translate_text(text)
         return result.proofread_json()["braille_ir"]["blocks"][0]["cells"]
 
     def test_x_axis_emits_connector_cell(self):
@@ -129,7 +129,7 @@ class TestEmDashPipeline:
     single 「—」 produces one cell ⠤."""
 
     def _punct_cells(self, text: str):
-        cells = Pipeline().translate_text(text).proofread_json()["braille_ir"]["blocks"][0]["cells"]
+        cells = Pipeline(profile="cn_current").translate_text(text).proofread_json()["braille_ir"]["blocks"][0]["cells"]
         return [c for c in cells if c.get("role") == "punct"]
 
     def test_chinese_dash_pair_is_two_cells(self):
@@ -156,7 +156,7 @@ class TestHandAnnotatedDocument:
 
     def test_canonical_sentence(self):
         profile = load_profile("cn_current")
-        ctx = BackendContext()
+        ctx = BackendContext(profile="cn_current")
 
         # 我 在 2026 年 5 月 17 日 去 了 重庆 银行 。
         doc = DocumentIR(blocks=[Paragraph(children=[
@@ -226,7 +226,7 @@ class TestHandAnnotatedDocument:
 class TestMultipleBlocks:
     def test_heading_and_paragraph_joined_by_newline(self):
         profile = load_profile("cn_current")
-        ctx = BackendContext()
+        ctx = BackendContext(profile="cn_current")
         doc = DocumentIR(blocks=[
             Heading(level=1, children=[HanziChar(surface="一", reading="yi1")]),
             Paragraph(children=[HanziChar(surface="文", reading="wen2")]),
@@ -245,7 +245,7 @@ class TestMultipleBlocks:
 class TestProvenance:
     def test_every_braille_cell_traces_back_to_source(self):
         profile = load_profile("cn_current")
-        ctx = BackendContext()
+        ctx = BackendContext(profile="cn_current")
         doc = DocumentIR(blocks=[Paragraph(children=[
             HanziChar(surface="我", reading="wo3", span=Span(0, 1)),
             HanziChar(surface="在", reading="zai4", span=Span(1, 2)),
@@ -294,7 +294,7 @@ class TestProfileFeature:
     def test_disabling_tone_shortens_output(self):
         """When tone is suppressed, the same content yields fewer cells."""
         profile = load_profile("cn_current")
-        ctx = BackendContext()
+        ctx = BackendContext(profile="cn_current")
         doc = DocumentIR(blocks=[Paragraph(children=[
             HanziChar(surface="在", reading="zai4", span=Span(0, 1)),
         ])])
@@ -305,7 +305,7 @@ class TestProfileFeature:
 
         profile.features["tone"] = False
         try:
-            ctx2 = BackendContext()
+            ctx2 = BackendContext(profile="cn_current")
             rendered_no_tone = UnicodeBrailleRenderer().render(
                 translate_document(doc, ctx2, profile)
             )

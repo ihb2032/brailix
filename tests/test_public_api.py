@@ -55,8 +55,6 @@ _FACADE: dict[str, list[str]] = {
         "BackendContext",
         "MathContext",
         "MusicContext",
-        "DEFAULT_PROFILE",
-        "DEFAULT_LANGUAGE",
         "RunMode",
     ],
     "brailix.core.models": [

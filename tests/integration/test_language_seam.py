@@ -48,7 +48,7 @@ class TestLanguageSelectedAdapters:
     registered under the language subtag (default Chinese has none)."""
 
     def test_segmenter_defaults_when_no_language_specific(self):
-        opts = Pipeline()._frontend_options()
+        opts = Pipeline(profile="cn_current")._frontend_options()
         assert opts["segmenter"] == "default"
         assert opts["normalizer"] == "default"
 
@@ -56,19 +56,19 @@ class TestLanguageSelectedAdapters:
         # cn_current is language zh-CN → subtag "zh".
         segmenter_registry.register("zh", DefaultSegmenter)
         try:
-            assert Pipeline()._frontend_options()["segmenter"] == "zh"
+            assert Pipeline(profile="cn_current")._frontend_options()["segmenter"] == "zh"
         finally:
             segmenter_registry.unregister("zh")
 
     def test_explicit_segmenter_overrides_language_selection(self):
         segmenter_registry.register("zh", DefaultSegmenter)
         try:
-            opts = Pipeline(segmenter="default")._frontend_options()
+            opts = Pipeline(profile="cn_current", segmenter="default")._frontend_options()
             # Passing the default name reads as "auto", so the language one
             # still wins; an explicit *non-default* name would override.
             assert opts["segmenter"] == "zh"
             segmenter_registry.register("custom", DefaultSegmenter)
-            opts2 = Pipeline(segmenter="custom")._frontend_options()
+            opts2 = Pipeline(profile="cn_current", segmenter="custom")._frontend_options()
             assert opts2["segmenter"] == "custom"
         finally:
             segmenter_registry.unregister("zh")
@@ -77,7 +77,7 @@ class TestLanguageSelectedAdapters:
 
 class TestChineseStillRoutes:
     def test_chinese_prose_routes_without_unhandled_warnings(self):
-        result = Pipeline().translate_text("我在重庆2026年")
+        result = Pipeline(profile="cn_current").translate_text("我在重庆2026年")
         codes = {w.code for w in result.warnings}
         assert "UNHANDLED_SEGMENT_TYPE" not in codes
         assert "NO_LANGUAGE_FRONTEND" not in codes
@@ -87,7 +87,7 @@ class TestChineseStillRoutes:
         # Keep zh registered (so "hanzi_text" is a known prose type), but
         # point the profile at a language with no frontend: a prose segment
         # is then a config gap, not an unknown type.
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         pipe._profile.language = "xx-XX"
         codes = {w.code for w in pipe.translate_text("我").warnings}
         assert "NO_LANGUAGE_FRONTEND" in codes

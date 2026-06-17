@@ -29,7 +29,7 @@ class TestHeading:
         ],
     )
     def test_heading_level_and_text(self, src, level, expected_text):
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Heading)
         assert doc.blocks[0].level == level
         assert doc.blocks[0].text == expected_text
@@ -42,7 +42,7 @@ class TestAlignment:
     round-trip."""
 
     def test_centered_heading(self):
-        doc = parse_markdown("# 通知 {align=center}")
+        doc = parse_markdown("# 通知 {align=center}", profile="cn_current", language="zh-CN")
         h = doc.blocks[0]
         assert isinstance(h, Heading)
         assert h.level == 1
@@ -50,44 +50,44 @@ class TestAlignment:
         assert h.align == "center"
 
     def test_right_aligned_paragraph(self):
-        doc = parse_markdown("二〇二六年五月 {align=right}")
+        doc = parse_markdown("二〇二六年五月 {align=right}", profile="cn_current", language="zh-CN")
         p = doc.blocks[0]
         assert isinstance(p, Paragraph)
         assert p.text == "二〇二六年五月"
         assert p.align == "right"
 
     def test_plain_block_has_no_align(self):
-        assert parse_markdown("# 标题").blocks[0].align is None
-        assert parse_markdown("普通段落").blocks[0].align is None
+        assert parse_markdown("# 标题", profile="cn_current", language="zh-CN").blocks[0].align is None
+        assert parse_markdown("普通段落", profile="cn_current", language="zh-CN").blocks[0].align is None
 
     def test_unrecognised_align_value_stays_literal(self):
         # Only center / right are alignment; anything else is left as text
         # so prose mentioning braces isn't silently eaten.
-        p = parse_markdown("正文 {align=justify}").blocks[0]
+        p = parse_markdown("正文 {align=justify}", profile="cn_current", language="zh-CN").blocks[0]
         assert p.align is None
         assert p.text == "正文 {align=justify}"
 
     def test_align_on_last_line_of_multiline_paragraph(self):
         # The emitter appends the marker at the paragraph's end; after the
         # soft-break join it sits at the tail of the body and is stripped.
-        p = parse_markdown("第一行\n第二行 {align=center}").blocks[0]
+        p = parse_markdown("第一行\n第二行 {align=center}", profile="cn_current", language="zh-CN").blocks[0]
         assert p.text == "第一行 第二行"
         assert p.align == "center"
 
 
 class TestParagraph:
     def test_single_line(self):
-        doc = parse_markdown("简单一段")
+        doc = parse_markdown("简单一段", profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Paragraph)
         assert doc.blocks[0].text == "简单一段"
 
     def test_multiline_joined_with_spaces(self):
-        doc = parse_markdown("第一行\n第二行")
+        doc = parse_markdown("第一行\n第二行", profile="cn_current", language="zh-CN")
         # Soft-break: lines join with a single space.
         assert doc.blocks[0].text == "第一行 第二行"
 
     def test_blank_line_separates_paragraphs(self):
-        doc = parse_markdown("段一\n\n段二")
+        doc = parse_markdown("段一\n\n段二", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 2
         assert all(isinstance(b, Paragraph) for b in doc.blocks)
 
@@ -95,7 +95,7 @@ class TestParagraph:
 class TestList:
     def test_unordered_list_with_dash(self):
         src = "- 一项\n- 二项\n- 三项"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         lst = doc.blocks[0]
         assert isinstance(lst, List)
         assert not lst.ordered
@@ -103,29 +103,29 @@ class TestList:
 
     def test_unordered_list_with_asterisk(self):
         src = "* item one\n* item two"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], List)
         assert [it.text for it in doc.blocks[0].items] == ["item one", "item two"]
 
     def test_unordered_list_with_plus(self):
-        doc = parse_markdown("+ a\n+ b")
+        doc = parse_markdown("+ a\n+ b", profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], List)
         assert len(doc.blocks[0].items) == 2
 
     def test_ordered_list_with_period(self):
-        doc = parse_markdown("1. 一\n2. 二\n3. 三")
+        doc = parse_markdown("1. 一\n2. 二\n3. 三", profile="cn_current", language="zh-CN")
         lst = doc.blocks[0]
         assert isinstance(lst, List)
         assert lst.ordered
         assert [it.text for it in lst.items] == ["一", "二", "三"]
 
     def test_ordered_list_with_paren(self):
-        doc = parse_markdown("1) first\n2) second")
+        doc = parse_markdown("1) first\n2) second", profile="cn_current", language="zh-CN")
         lst = doc.blocks[0]
         assert isinstance(lst, List) and lst.ordered
 
     def test_blank_line_terminates_list(self):
-        doc = parse_markdown("- a\n- b\n\nparagraph")
+        doc = parse_markdown("- a\n- b\n\nparagraph", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 2
         assert isinstance(doc.blocks[0], List)
         assert isinstance(doc.blocks[1], Paragraph)
@@ -133,16 +133,16 @@ class TestList:
 
 class TestQuote:
     def test_single_line_quote(self):
-        doc = parse_markdown("> 引用一句")
+        doc = parse_markdown("> 引用一句", profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Quote)
         assert doc.blocks[0].text == "引用一句"
 
     def test_multiline_quote(self):
-        doc = parse_markdown("> 第一行\n> 第二行")
+        doc = parse_markdown("> 第一行\n> 第二行", profile="cn_current", language="zh-CN")
         assert doc.blocks[0].text == "第一行\n第二行"
 
     def test_blank_line_terminates_quote(self):
-        doc = parse_markdown("> 引文\n\nparagraph")
+        doc = parse_markdown("> 引文\n\nparagraph", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 2
         assert isinstance(doc.blocks[0], Quote)
         assert isinstance(doc.blocks[1], Paragraph)
@@ -151,14 +151,14 @@ class TestQuote:
 class TestCodeBlock:
     def test_fenced_code_block_basic(self):
         src = "```\nprint(1)\nprint(2)\n```"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         cb = doc.blocks[0]
         assert isinstance(cb, CodeBlock)
         assert cb.text == "print(1)\nprint(2)"
 
     def test_fenced_code_block_with_language(self):
         src = "```python\nx = 1\n```"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         cb = doc.blocks[0]
         assert isinstance(cb, CodeBlock)
         assert cb.language == "python"
@@ -168,20 +168,20 @@ class TestCodeBlock:
         # No closing fence: we still parse the block and continue past EOF
         # gracefully (no crash on dangling code).
         src = "```\nno close"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], CodeBlock)
 
 
 class TestMathBlock:
     def test_single_line_dollar_dollar(self):
-        doc = parse_markdown("$$x + y = z$$")
+        doc = parse_markdown("$$x + y = z$$", profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], MathBlock)
         assert doc.blocks[0].source == "latex"
         assert doc.blocks[0].text == "x + y = z"
 
     def test_multiline_dollar_dollar(self):
         src = "$$\n\\frac{1}{2}\n$$"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         mb = doc.blocks[0]
         assert isinstance(mb, MathBlock)
         assert "\\frac" in mb.text
@@ -189,7 +189,7 @@ class TestMathBlock:
     def test_unterminated_dollar_treated_as_paragraph(self):
         # Opening $$ without a close → fall back to paragraph so we
         # don't swallow the rest of the document silently.
-        doc = parse_markdown("$$ no close\nnext line")
+        doc = parse_markdown("$$ no close\nnext line", profile="cn_current", language="zh-CN")
         # Either a paragraph or a code-like block — we just assert
         # it's not a runaway math block that ate everything.
         assert not isinstance(doc.blocks[0], MathBlock)
@@ -198,7 +198,7 @@ class TestMathBlock:
 class TestTable:
     def test_basic_table_two_rows(self):
         src = "| A | B |\n| - | - |\n| 1 | 2 |"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         t = doc.blocks[0]
         assert isinstance(t, Table)
         # Separator row dropped → 2 content rows.
@@ -208,14 +208,14 @@ class TestTable:
 
     def test_table_without_separator(self):
         src = "| a | b |\n| c | d |"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         t = doc.blocks[0]
         assert isinstance(t, Table)
         assert len(t.rows) == 2
 
     def test_blank_terminates_table(self):
         src = "| a | b |\n\nparagraph"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Table)
         assert isinstance(doc.blocks[1], Paragraph)
 
@@ -225,20 +225,20 @@ class TestTable:
         # stranding it past EOF and crashing span_of with IndexError.
         # Now it leaves the cursor untouched and the line falls through to
         # a paragraph carrying the literal text.
-        doc = parse_markdown("| --- |")
+        doc = parse_markdown("| --- |", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 1
         assert isinstance(doc.blocks[0], Paragraph)
         assert doc.blocks[0].text == "| --- |"
 
     def test_separator_only_at_eof_after_paragraph(self):
-        doc = parse_markdown("para\n\n| --- |")
+        doc = parse_markdown("para\n\n| --- |", profile="cn_current", language="zh-CN")
         assert [type(b).__name__ for b in doc.blocks] == ["Paragraph", "Paragraph"]
         assert doc.blocks[1].text == "| --- |"
 
     def test_separator_only_then_content_no_ghost_paragraph(self):
         # The separator falls through to a paragraph; the real content
         # that follows is its own block. No empty Paragraph is injected.
-        doc = parse_markdown("| --- |\n\nhello")
+        doc = parse_markdown("| --- |\n\nhello", profile="cn_current", language="zh-CN")
         assert [type(b).__name__ for b in doc.blocks] == ["Paragraph", "Paragraph"]
         assert doc.blocks[0].text == "| --- |"
         assert doc.blocks[1].text == "hello"
@@ -249,7 +249,7 @@ class TestTable:
         # NOT be mistaken for the header/body separator and dropped — only
         # the separator at row index 1 is removed.
         src = "| A | B |\n| - | - |\n| 1 | 2 |\n| - | - |"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         t = doc.blocks[0]
         assert isinstance(t, Table)
         # header + separator(dropped) + 2 body rows (incl. the all-dash one)
@@ -265,13 +265,13 @@ class TestTableParagraphInteraction:
         # (a stray "|" in prose shouldn't end a paragraph), so a table line
         # directly after a paragraph line — no blank line between — joins into
         # the paragraph instead of starting a Table.
-        doc = parse_markdown("正文一段\n| A | B |\n| 1 | 2 |")
+        doc = parse_markdown("正文一段\n| A | B |\n| 1 | 2 |", profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 1
         assert isinstance(doc.blocks[0], Paragraph)
 
     def test_blank_line_before_table_is_recognised(self):
         # With the blank line, the table is its own block.
-        doc = parse_markdown("正文一段\n\n| A | B |\n| 1 | 2 |")
+        doc = parse_markdown("正文一段\n\n| A | B |\n| 1 | 2 |", profile="cn_current", language="zh-CN")
         assert [type(b).__name__ for b in doc.blocks] == ["Paragraph", "Table"]
 
 
@@ -298,7 +298,7 @@ $$x = y$$
 | --- | --- |
 | 1 | 2 |
 """
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         types = [type(b).__name__ for b in doc.blocks]
         # Heading, Paragraph, Heading, List, Quote, CodeBlock, MathBlock, Table
         assert "Heading" in types
@@ -313,19 +313,19 @@ $$x = y$$
 class TestSpans:
     def test_paragraph_span_covers_source(self):
         text = "一段话"
-        doc = parse_markdown(text)
+        doc = parse_markdown(text, profile="cn_current", language="zh-CN")
         assert doc.blocks[0].span is not None
         assert doc.blocks[0].span.start == 0
 
     def test_blocks_have_distinct_spans(self):
         text = "段一\n\n段二"
-        doc = parse_markdown(text)
+        doc = parse_markdown(text, profile="cn_current", language="zh-CN")
         assert doc.blocks[0].span.end <= doc.blocks[1].span.start
 
 
 class TestMetadata:
     def test_metadata_defaults(self):
-        doc = parse_markdown("test")
+        doc = parse_markdown("test", profile="cn_current", language="zh-CN")
         assert doc.metadata["language"] == "zh-CN"
         assert doc.metadata["profile"] == "cn_current"
 

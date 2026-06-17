@@ -43,7 +43,7 @@ class TestJiebaChineseAnalyzer:
 
     def test_accepts_optional_context(self):
         analyzer = JiebaChineseAnalyzer(tokenize_fn=_fake_tokenize)
-        ctx = FrontendContext()
+        ctx = FrontendContext(profile="cn_current")
         # The adapter ignores ctx but should accept it without raising.
         tokens = analyzer.analyze("x", ctx)
         assert tokens[0].surface == "x"

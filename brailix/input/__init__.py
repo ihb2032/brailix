@@ -52,7 +52,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from brailix.core.defaults import DEFAULT_LANGUAGE, DEFAULT_PROFILE
 from brailix.input.docx import parse_doc, parse_docx
 from brailix.input.markdown import parse_markdown
 from brailix.input.music_xml import (
@@ -208,8 +207,8 @@ _SUFFIX_ROUTES: dict[str, _Handler] = {
 def parse_file(
     path: str | os.PathLike[str],
     *,
-    language: str = DEFAULT_LANGUAGE,
-    profile: str = DEFAULT_PROFILE,
+    language: str,
+    profile: str,
     mathtype_fallback: str = "off",
     chem_detection: bool = False,
 ) -> DocumentIR:
