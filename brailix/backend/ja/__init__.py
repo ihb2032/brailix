@@ -34,7 +34,7 @@ from brailix.core.config import BrailleProfile
 from brailix.core.context import BackendContext
 from brailix.core.span import Span
 from brailix.ir.braille import BrailleCell
-from brailix.ir.inline import HanziChar, Word
+from brailix.ir.inline import HanziChar, HanziMarker, Word
 
 # Katakana small ya/yu/yo — these glue onto the preceding kana to form a
 # youon mora (キ + ャ -> キャ). Other small kana (ァ ィ ゥ ェ ォ, foreign
@@ -63,6 +63,48 @@ def translate_hanzi_char(
     return _translate_japanese(
         node.surface, node.reading, node.span, ctx, profile
     )
+
+
+def translate_date_marker(
+    marker: HanziMarker,
+    follows_number: bool,
+    ctx: BackendContext,
+    profile: BrailleProfile,
+) -> list[BrailleCell]:
+    """Japanese date marker → cells (generic fallback).
+
+    Japanese prose ships no :class:`~brailix.ir.inline.Date` carrying date
+    markers today — the default normalizer's markers are Chinese — so this
+    is a generic implementation: a number→marker connector when the marker
+    follows a Number, then the marker's reading. There is no 年-style
+    exemption; that is a Chinese orthography rule and lives in
+    :mod:`brailix.backend.zh`.
+    """
+    out: list[BrailleCell] = []
+    if follows_number:
+        boundary = (
+            Span(marker.span.start, marker.span.start) if marker.span else None
+        )
+        out.append(
+            BrailleCell(
+                dots=profile.connector,
+                role="connector",
+                source_span=boundary,
+                source_text="",
+            )
+        )
+    out.extend(
+        translate_hanzi_char(
+            HanziChar(
+                surface=marker.surface,
+                span=marker.span,
+                reading=marker.reading,
+            ),
+            ctx,
+            profile,
+        )
+    )
+    return out
 
 
 def _to_katakana(reading: str) -> str:

@@ -9,18 +9,15 @@ braille "phrase". For now we emit it before every numeric token;
 context-aware suppression (e.g. "still inside a number") arrives with
 :class:`BackendContext` plumbing.
 
-Language scope: Number / Percent / Quantity are language-agnostic
-(they only touch the profile's digit / punctuation / letter tables).
-:func:`translate_date` is the exception — it is currently specialised
-for Chinese date markers: the year marker 年 takes no number→marker
-connector (NCB convention; see :data:`_DATE_CONNECTOR_EXEMPT`) and the
-marker's reading is voiced through :mod:`brailix.backend.zh`. This is
-acceptable because Chinese is the only shipping language with a
-:class:`~brailix.ir.inline.Date` that carries
-:class:`~brailix.ir.inline.HanziMarker` parts; adding another language
-with date markers should push the marker-connector rule and the
-marker-reading path down into the per-language ``LanguageBackend``
-rather than growing more special cases here.
+Language scope: every node here is language-agnostic. Number / Percent /
+Quantity only touch the profile's digit / punctuation / letter tables.
+:func:`translate_date` owns just the language-neutral skeleton (the
+numeric components and the blank that separates them) and delegates each
+date marker (年/月/日…) to the profile language's
+``LanguageBackend.translate_date_marker``, resolved through the registry
+rather than a hard import. That backend owns the marker reading and the
+connector rule (Chinese exempts the year marker 年), so no per-language
+date rule lives in this module (ARCHITECTURE §7.6 / §12).
 """
 
 from __future__ import annotations
@@ -36,13 +33,6 @@ from brailix.ir.inline import Date, HanziMarker, InlineNode, Number, Percent, Qu
 # Role labels for prose number digit runs (the math backend uses
 # "math_digit"); the shared emitter handles the rest.
 _NUMBER_ROLES = DigitRoles(digit="digit")
-
-# The one date marker that writes directly against its number with no
-# connector: the NCB convention keeps the year marker 年 attached to the
-# year digits. Every other marker (月/日/号/时/分/秒, i.e. month/day/day-no./hour/min/sec) takes the
-# number→hanzi joiner the way ``10页`` (10 pages) / ``3个`` (3 items) do; see
-# :func:`translate_date`.
-_DATE_CONNECTOR_EXEMPT = "年"
 
 # ---------------------------------------------------------------------------
 # Public entry points (one per IR node type)
@@ -144,43 +134,38 @@ def _unit_char_cells(
 
 
 def translate_date(node: Date, ctx: BackendContext, profile: BrailleProfile) -> list[BrailleCell]:
-    """Date → recurse into ``parts``.
+    """Date → language-neutral numeric skeleton + delegated markers.
 
-    **Chinese-specialised path.** Unlike the rest of this module, the
-    Date path is currently tied to Chinese date markers in two ways:
-    the connector-exemption rule below singles out 年 (NCB convention),
-    and each :class:`HanziMarker` (年/月/日/号/时/分/秒/…) is voiced as a
-    Chinese syllable through :mod:`backend.zh`. This is the only date
-    shape that ships today; the next language with date markers should
-    move both pieces (the per-marker connector rule and the
-    marker-reading backend) down into its ``LanguageBackend`` instead of
-    extending this function. See the module docstring.
+    The Date is the one number-family node with a language-specific part:
+    its :class:`HanziMarker` components (年/月/日/号/时/分/秒/…) carry a
+    reading and an orthographic connector rule. This function owns only
+    the **language-neutral skeleton** — each :class:`Number` component
+    runs through the number-sign + digit pipeline, and a word-boundary
+    blank separates components (``2026年 5月 17日``, not ``2026年5月17日``) —
+    and delegates every marker to the profile language's
+    ``LanguageBackend.translate_date_marker`` (resolved through the
+    registry, **not** a hard import), which owns the marker reading and
+    the connector rule. So no per-language date rule lives in this
+    language-neutral module (ARCHITECTURE §7.6 / §12).
 
-    Each :class:`Number` part runs through the number-sign + digit
-    pipeline. For the marker reading the backend still does no language
-    *detection*: it relies on whatever :attr:`HanziMarker.reading` the
-    frontend already attached. If pinyin is missing, backend/zh emits a
-    ``MISSING_PINYIN`` warning and an unknown cell — guessing the
-    reading is the frontend's job, not ours (the backend "no longer does
-    language detection", ARCHITECTURE §12).
-
-    A connector ⠤ is inserted before a marker that directly follows a
-    Number — the same number→hanzi joiner the zh frontend applies to
-    ``10页`` / ``3个`` (see
-    :func:`brailix.frontend.zh.insert_cross_kind_boundary_spaces`) —
-    because the digit cells would collide with the marker's leading
-    cell (日's is ⠚, the same pattern as the digit 0, so ``17日`` would
-    read as "170"). 年 is the lone exception: the NCB convention writes
-    a year number directly against 年 with no joiner; 月/日/号/时/分/秒
-    all take the connector.
-
-    The year / month / day **components** are space-separated, though:
-    ``2026年 5月 17日``, not ``2026年5月17日``. The connector binds a number
-    to its marker *within* a component; a word-boundary blank goes
-    *between* components, i.e. before a Number that follows a marker.
+    ``follows_number=True`` is passed when the marker directly follows a
+    Number, so the language backend can decide whether a connector ⠤
+    binds the digits to the marker — e.g. 日's leading cell ⠚ matches the
+    digit 0, so ``17日`` needs the joiner to avoid reading as "170"; the
+    Chinese backend exempts 年. A missing marker reading degrades to a
+    warning + unknown cell inside that backend, never a crash.
     """
-    from brailix.backend import zh as zh_backend  # local import to avoid cycle
-    from brailix.ir.inline import HanziChar
+    # Local import to avoid the dispatch ↔ number import cycle; the marker
+    # translator is resolved by the profile's language, never hard-wired
+    # to one language backend.
+    from brailix.backend.dispatch import language_backend_registry
+
+    lang = profile.language.split("-")[0]
+    backend = (
+        language_backend_registry.get(lang)
+        if language_backend_registry.has(lang)
+        else None
+    )
 
     out: list[BrailleCell] = []
     prev: InlineNode | None = None
@@ -194,19 +179,22 @@ def translate_date(node: Date, ctx: BackendContext, profile: BrailleProfile) -> 
                 out.append(_component_space_cell(part.span))
             out.extend(_digits_to_cells(part.surface, part.span, ctx, profile))
         elif isinstance(part, HanziMarker):
-            if isinstance(prev, Number) and part.surface != _DATE_CONNECTOR_EXEMPT:
-                out.append(_connector_cell(part.span, profile))
-            out.extend(
-                zh_backend.translate_hanzi_char(
-                    HanziChar(
-                        surface=part.surface,
-                        span=part.span,
-                        reading=part.reading,
-                    ),
-                    ctx,
-                    profile,
+            if backend is None:
+                out.append(
+                    _unknown_cell(
+                        part.surface,
+                        part.span,
+                        ctx,
+                        code="NO_LANGUAGE_BACKEND",
+                        message=f"no backend registered for language {lang!r}",
+                    )
                 )
-            )
+            else:
+                out.extend(
+                    backend.translate_date_marker(
+                        part, isinstance(prev, Number), ctx, profile
+                    )
+                )
         prev = part
     return out
 
@@ -256,25 +244,6 @@ def _punct_cells(
         BrailleCell(dots=dots, role="punct", source_span=span, source_text=ch)
         for dots in cells
     ]
-
-
-def _connector_cell(span: Span | None, profile: BrailleProfile) -> BrailleCell:
-    """One connector cell (⠤) for a number→marker boundary inside a Date.
-
-    Mirrors :func:`brailix.backend.punct.translate_connector`'s cell —
-    same ``profile.connector`` dots, ``role="connector"``, empty surface
-    — but emitted straight from :func:`translate_date` because a Date
-    bundles its Number / HanziMarker parts instead of separating them
-    with :class:`~brailix.ir.inline.Connector` IR nodes. The span
-    collapses to the boundary point (marker start = number end) so the
-    synthetic cell never overlaps real source positions."""
-    boundary = Span(span.start, span.start) if span else None
-    return BrailleCell(
-        dots=profile.connector,
-        role="connector",
-        source_span=boundary,
-        source_text="",
-    )
 
 
 def _component_space_cell(span: Span | None) -> BrailleCell:
