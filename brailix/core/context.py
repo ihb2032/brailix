@@ -5,9 +5,9 @@ They share a :class:`WarningCollector` so diagnostics from any layer
 end up in the same final report.
 
 The context types carry the profile name plus mode / options as a
-small bundle adapters can inspect. Default values pull from
-:mod:`brailix.core.defaults` so renaming the shipping default is
-a one-line change.
+small bundle adapters can inspect. ``profile`` is required on every
+context — there is no built-in default braille standard; the caller
+(normally :class:`~brailix.Pipeline`) always supplies the chosen one.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
-from brailix.core.defaults import DEFAULT_PROFILE
 from brailix.core.errors import RunMode, WarningCollector, normalize_run_mode
 
 if TYPE_CHECKING:
@@ -37,7 +36,7 @@ class FrontendContext:
     pulled from ``profile`` — the context doesn't duplicate it.
     """
 
-    profile: str = DEFAULT_PROFILE
+    profile: str
     mode: RunMode | str = RunMode.NORMAL
     warnings: WarningCollector = field(default_factory=WarningCollector)
     options: dict[str, Any] = field(default_factory=dict)
@@ -92,7 +91,7 @@ class MathContext:
 
     mode: Literal["inline", "display"] = "inline"
     source: str = "plain"  # latex / omml / asciimath / mathml / plain
-    profile: str = DEFAULT_PROFILE
+    profile: str = field(kw_only=True)  # required; no built-in default standard
     surrounding_text: tuple[str, str] | None = None  # (before, after)
     warnings: WarningCollector = field(default_factory=WarningCollector)
     options: dict[str, Any] = field(default_factory=dict)
@@ -115,7 +114,7 @@ class MusicContext:
 
     mode: Literal["inline", "block", "score"] = "block"
     source: str = "plain"  # musicxml / mxl / midi / abc / plain
-    profile: str = DEFAULT_PROFILE
+    profile: str = field(kw_only=True)  # required; no built-in default standard
     transposition: int = 0           # semitones; -12 = octave down, etc.
     octave_inference: bool = True    # whether to apply BANA Par. 3.2.2
     show_lyrics: bool = True
@@ -149,7 +148,7 @@ class BackendContext:
     dispatcher and only invited silently-ignored writes, so it was removed.
     """
 
-    profile: str = DEFAULT_PROFILE
+    profile: str
     mode: RunMode | str = RunMode.NORMAL
     block_type: str = "paragraph"
     warnings: WarningCollector = field(default_factory=WarningCollector)

@@ -66,7 +66,7 @@ class TestResolve:
 
 class TestLengthMismatch:
     def test_mismatch_drops_pinyin_and_warns(self):
-        ctx = FrontendContext(mode=RunMode.NORMAL)
+        ctx = FrontendContext(profile="cn_current", mode=RunMode.NORMAL)
         tokens = [ChineseToken(surface="重庆", span=Span(0, 2))]
         # Converter returns one syllable for a two-char sentence.
         adapter = G2pmPinyinResolver(converter=lambda _: ["chong2"])

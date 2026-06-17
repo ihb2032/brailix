@@ -86,7 +86,7 @@ A `BrailleCell` carries its `dots` (a tuple such as `(1, 2, 4)`), an optional `u
 - `BrailixError` — the base exception type.
 - `FrontendContext`, `BackendContext`, `MathContext`, `MusicContext` — the per-stage context objects passed to adapters.
 - `RunMode` — the `strict` / `normal` / `lenient` policy enum.
-- `DEFAULT_PROFILE` and `DEFAULT_LANGUAGE` — the built-in defaults.
+- `DEFAULT_SEGMENTER`, `DEFAULT_NORMALIZER`, `DEFAULT_ZH_ANALYZER`, `DEFAULT_PINYIN_RESOLVER`, `DEFAULT_RENDERER` — built-in default *adapter* names. There is deliberately no default profile or language: a profile (the braille standard) is always chosen explicitly by the caller, and each profile declares its own language.
 
 ## `brailix.core.models` — downloadable model assets
 

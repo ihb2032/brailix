@@ -102,7 +102,7 @@ class TestResolve:
 
 class TestLowConfidenceWarning:
     def test_low_confidence_emits_warning(self):
-        ctx = FrontendContext(mode=RunMode.NORMAL)
+        ctx = FrontendContext(profile="cn_current", mode=RunMode.NORMAL)
         tokens = [ChineseToken(surface="单于", span=Span(0, 2))]
         adapter = G2pwPinyinResolver(
             predictor=_predictor(["chan2", "yu2"], [0.5, 0.55]),
@@ -115,7 +115,7 @@ class TestLowConfidenceWarning:
         assert warnings[0].source == "pinyin.g2pw"
 
     def test_high_confidence_emits_nothing(self):
-        ctx = FrontendContext(mode=RunMode.NORMAL)
+        ctx = FrontendContext(profile="cn_current", mode=RunMode.NORMAL)
         tokens = [ChineseToken(surface="我", span=Span(0, 1))]
         adapter = G2pwPinyinResolver(
             predictor=_predictor(["wo3"], [0.99]),
@@ -124,7 +124,7 @@ class TestLowConfidenceWarning:
         assert len(ctx.warnings) == 0
 
     def test_threshold_is_configurable(self):
-        ctx = FrontendContext(mode=RunMode.NORMAL)
+        ctx = FrontendContext(profile="cn_current", mode=RunMode.NORMAL)
         tokens = [ChineseToken(surface="我", span=Span(0, 1))]
         adapter = G2pwPinyinResolver(
             predictor=_predictor(["wo3"], [0.6]),

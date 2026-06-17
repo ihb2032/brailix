@@ -15,7 +15,6 @@ from brailix.core.config._helpers import (
     _feature_lookup,
 )
 from brailix.core.config.zh_ncb_tables import NcbExceptions
-from brailix.core.defaults import DEFAULT_LANGUAGE
 
 
 @dataclass(slots=True)
@@ -23,7 +22,10 @@ class BrailleProfile:
     """Resolved profile: all table files are read and parsed."""
 
     name: str
-    language: str = DEFAULT_LANGUAGE
+    # Required: every profile declares its own language subtag in JSON
+    # (e.g. ``zh-CN`` / ``ja-JP``). There is no built-in default language;
+    # the loader raises if a profile omits it.
+    language: str
     cell: str = "six_dot"
     features: dict[str, Any] = field(default_factory=dict)
 

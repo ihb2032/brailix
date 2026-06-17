@@ -29,7 +29,7 @@ class TestPipelineIntegration:
     def test_pipeline_x_squared(self):
         from brailix import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text(r"$x^2$")
         r = [c.role for b in result.braille_ir.blocks for c in b.cells]
         assert "math_identifier" in r
@@ -44,7 +44,7 @@ class TestPipelineIntegration:
     def test_pipeline_sin_x(self):
         from brailix import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text(r"$\sin x$")
         r = [c.role for b in result.braille_ir.blocks for c in b.cells]
         assert "math_function_prefix" in r
@@ -54,7 +54,7 @@ class TestPipelineIntegration:
     def test_pipeline_one_half_uses_antoine(self):
         from brailix import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text(r"$\frac{1}{2}$")
         r = [c.role for b in result.braille_ir.blocks for c in b.cells]
         assert "math_digit_lower" in r
@@ -63,7 +63,7 @@ class TestPipelineIntegration:
     def test_pipeline_lim_x_to_zero(self):
         from brailix import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text(r"$\lim_{x \to 0} f(x)$")
         cells = [c for b in result.braille_ir.blocks for c in b.cells]
         r = [c.role for c in cells]
@@ -123,7 +123,7 @@ class TestStateMachine:
         assert ns_count == 2
 
     def test_context_default_state(self, profile):
-        ctx = BackendContext()
+        ctx = BackendContext(profile="cn_current")
         mctx = MathBrailleContext(profile=profile, backend=ctx)
         assert mctx.need_number_sign is True
 

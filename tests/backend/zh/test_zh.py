@@ -14,7 +14,7 @@ def profile():
 
 @pytest.fixture
 def ctx():
-    return BackendContext()
+    return BackendContext(profile="cn_current")
 
 
 def _roles(cells):

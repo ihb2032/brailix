@@ -36,6 +36,7 @@ from brailix.ir.inline import (
     Connector,
     Date,
     HanziChar,
+    HanziMarker,
     InlineNode,
     LatinAcronym,
     LatinWord,
@@ -89,6 +90,15 @@ class _ZhBackend:
     ) -> list[BrailleCell]:
         return zh_backend.translate_hanzi_char(node, ctx, profile)
 
+    def translate_date_marker(
+        self,
+        marker: HanziMarker,
+        follows_number: bool,
+        ctx: BackendContext,
+        profile: BrailleProfile,
+    ) -> list[BrailleCell]:
+        return zh_backend.translate_date_marker(marker, follows_number, ctx, profile)
+
 
 class _JaBackend:
     """Japanese :class:`~brailix.core.protocols.LanguageBackend`: the
@@ -103,6 +113,15 @@ class _JaBackend:
         self, node: HanziChar, ctx: BackendContext, profile: BrailleProfile
     ) -> list[BrailleCell]:
         return ja_backend.translate_hanzi_char(node, ctx, profile)
+
+    def translate_date_marker(
+        self,
+        marker: HanziMarker,
+        follows_number: bool,
+        ctx: BackendContext,
+        profile: BrailleProfile,
+    ) -> list[BrailleCell]:
+        return ja_backend.translate_date_marker(marker, follows_number, ctx, profile)
 
 
 # Per-language backend registry — the dispatcher routes prose nodes

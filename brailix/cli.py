@@ -34,7 +34,6 @@ from brailix.core import RunMode
 from brailix.core.config import iter_builtin_profiles
 from brailix.core.defaults import (
     DEFAULT_PINYIN_RESOLVER,
-    DEFAULT_PROFILE,
     DEFAULT_RENDERER,
     DEFAULT_ZH_ANALYZER,
 )
@@ -155,9 +154,9 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument(
         "-p",
         "--profile",
-        default=DEFAULT_PROFILE,
+        default=None,
         metavar="NAME",
-        help=f"braille profile (default: {DEFAULT_PROFILE}; see --list-profiles)",
+        help="braille profile to use, required (see --list-profiles)",
     )
     tr.add_argument(
         "-a",
@@ -279,7 +278,16 @@ def _validate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None
     registries (the no-hardcode source of truth) — but only when the user
     set a non-default value, so a plain run never imports a registry it
     doesn't need.
+
+    ``--profile`` is required (there is no built-in default braille
+    standard); it is checked here rather than via argparse ``required=True``
+    so the ``--list-*`` discovery flags still run without it.
     """
+    if args.profile is None:
+        parser.error(
+            "the following arguments are required: -p/--profile "
+            "(see --list-profiles for available names)"
+        )
     if args.analyzer != DEFAULT_ZH_ANALYZER:
         valid = set(list_zh_analyzers()) | set(list_ja_analyzers())
         if args.analyzer not in valid:

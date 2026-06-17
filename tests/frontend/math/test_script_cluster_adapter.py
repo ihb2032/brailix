@@ -51,7 +51,7 @@ class TestParseAtoms:
 
 def _mathml(source: str, payload: str) -> str:
     return math_source_registry.get(source).to_mathml(
-        payload, MathContext(source=source)
+        payload, MathContext(profile="cn_current", source=source)
     )
 
 
@@ -103,12 +103,12 @@ class TestChemJudgment:
 class TestThroughParseMathTree:
     def test_normalised_tree_via_registry(self) -> None:
         # The public path the pipeline uses: source name → adapter → normalize.
-        tree = parse_math_tree("x^{2}", MathContext(source="script_cluster"))
+        tree = parse_math_tree("x^{2}", MathContext(profile="cn_current", source="script_cluster"))
         assert tree is not None
         assert tree.find(".//msup") is not None
 
     def test_chem_tree_carries_attribute(self) -> None:
-        tree = parse_math_tree("H_{2}O", MathContext(source="script_cluster_chem"))
+        tree = parse_math_tree("H_{2}O", MathContext(profile="cn_current", source="script_cluster_chem"))
         assert tree is not None
         assert tree.get("data-bk-chem") == "1"
         # Sanity: it really is the normalised math root.

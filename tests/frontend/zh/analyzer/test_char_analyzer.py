@@ -27,7 +27,7 @@ class TestCharAnalyzer:
             assert t.pinyin is None
 
     def test_accepts_context(self):
-        ctx = FrontendContext()
+        ctx = FrontendContext(profile="cn_current")
         tokens = CharChineseAnalyzer().analyze("我", ctx)
         assert tokens[0].surface == "我"
 

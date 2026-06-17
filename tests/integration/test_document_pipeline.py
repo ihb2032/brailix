@@ -45,7 +45,7 @@ class TestNoFrontendPollution:
     def test_math_block_uses_math_frontend_not_chinese(self, pipe):
         from brailix.ir.inline import MathInline
 
-        doc = parse_markdown("$$x + y = z$$")
+        doc = parse_markdown("$$x + y = z$$", profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         math_blocks = [b for b in result.ir.blocks if isinstance(b, MathBlock)]
         assert math_blocks
@@ -62,7 +62,7 @@ class TestNoFrontendPollution:
     def test_code_block_wrapped_as_codeinline_not_tokenized(self, pipe):
         from brailix.ir.inline import CodeInline
 
-        doc = parse_markdown("```python\nx = 1\n```")
+        doc = parse_markdown("```python\nx = 1\n```", profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         code_blocks = [b for b in result.ir.blocks if isinstance(b, CodeBlock)]
         assert code_blocks
@@ -79,7 +79,7 @@ class TestNoFrontendPollution:
     def test_paragraph_still_populates_children(self, pipe):
         # Paragraphs DO run through the frontend — confirm the
         # math/code skip didn't accidentally short-circuit text blocks.
-        doc = parse_markdown("一段中文。")
+        doc = parse_markdown("一段中文。", profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         assert result.ir.blocks[0].children
 
@@ -91,7 +91,7 @@ class TestNoFrontendPollution:
 
 class TestBackendEmitsForMathCode:
     def test_math_block_emits_cells(self, pipe):
-        doc = parse_markdown("$$x + y$$")
+        doc = parse_markdown("$$x + y$$", profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         math_braille_blocks = [
             b for b in result.braille_ir.blocks if b.block_type == "math_block"
@@ -100,7 +100,7 @@ class TestBackendEmitsForMathCode:
         assert math_braille_blocks[0].cells, "math backend should produce cells"
 
     def test_code_block_emits_one_cell_per_source_char(self, pipe):
-        doc = parse_markdown("```\nabc\n```")
+        doc = parse_markdown("```\nabc\n```", profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         code_braille_blocks = [
             b for b in result.braille_ir.blocks if b.block_type == "code_block"
@@ -117,7 +117,7 @@ class TestBackendEmitsForMathCode:
 
 class TestHeadingLevelThroughPipeline:
     def test_level_1_heading_centered(self, pipe):
-        doc = parse_markdown("# 一")
+        doc = parse_markdown("# 一", profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         out = LayoutRenderer(options=LayoutOptions(line_width=20)).render(
             result.braille_ir
@@ -131,7 +131,7 @@ class TestHeadingLevelThroughPipeline:
         assert content_lines[0].startswith(dots_to_char(()))
 
     def test_level_2_heading_flush_left(self, pipe):
-        doc = parse_markdown("## 一")
+        doc = parse_markdown("## 一", profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         out = LayoutRenderer(options=LayoutOptions(line_width=20)).render(
             result.braille_ir
@@ -160,7 +160,7 @@ class TestKitchenSinkDocument:
                 "$$a + b$$",
             ]
         )
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         block_types = {b.block_type for b in result.braille_ir.blocks}
         # Heading + paragraph + 2 list_items + quote + code_block + math_block.
@@ -176,7 +176,7 @@ class TestKitchenSinkDocument:
         # pagination must produce a string. We don't assert on exact
         # content — that's a job for golden tests.
         src = "# 标题\n\n一段正文。\n\n- 项一\n\n> 引文"
-        doc = parse_markdown(src)
+        doc = parse_markdown(src, profile="cn_current", language="zh-CN")
         result = pipe.translate_document(doc)
         out = LayoutRenderer(options=LayoutOptions(
             line_width=40, page_height=20

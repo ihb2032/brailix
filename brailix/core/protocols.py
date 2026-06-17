@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from brailix.ir.inline import (
         ChineseToken,
         HanziChar,
+        HanziMarker,
         InlineNode,
         Segment,
         Word,
@@ -167,6 +168,25 @@ class LanguageBackend(Protocol):
     def translate_hanzi_char(
         self, node: HanziChar, ctx: BackendContext, profile: BrailleProfile
     ) -> list[BrailleCell]: ...
+
+    def translate_date_marker(
+        self,
+        marker: HanziMarker,
+        follows_number: bool,
+        ctx: BackendContext,
+        profile: BrailleProfile,
+    ) -> list[BrailleCell]:
+        """Translate a date marker (年/月/日/号/时/分/秒, …) to cells.
+
+        The language owns both the marker's **reading** and the
+        orthographic **connector rule** — whether a number→marker joiner
+        cell precedes it when ``follows_number`` is true (Chinese exempts
+        the year marker 年; other markers take the connector). The
+        language-neutral :func:`brailix.backend.number.translate_date`
+        skeleton handles the numeric components and delegates each marker
+        here, so no date-marker rule lives outside a ``LanguageBackend``.
+        """
+        ...
 
 
 @runtime_checkable

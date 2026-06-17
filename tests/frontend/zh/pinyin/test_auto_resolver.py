@@ -38,7 +38,7 @@ def test_auto_uses_pypinyin_when_available(monkeypatch):
     resolver = resolver_registry.get("auto")
     out = resolver.resolve(
         [ChineseToken(surface="\u6211"), ChineseToken(surface="\u5728")],
-        FrontendContext(),
+        FrontendContext(profile="cn_current"),
     )
 
     assert [t.pinyin for t in out] == ["wo3", "zai4"]
@@ -65,7 +65,7 @@ def test_auto_prefers_g2pw_when_available(monkeypatch):
     resolver = resolver_registry.get("auto")
     out = resolver.resolve(
         [ChineseToken(surface="\u6211"), ChineseToken(surface="\u5728")],
-        FrontendContext(),
+        FrontendContext(profile="cn_current"),
     )
 
     assert [t.pinyin for t in out] == ["wo3", "zai4"]
@@ -78,7 +78,7 @@ def test_auto_falls_back_to_null_when_real_backends_are_missing(monkeypatch):
     monkeypatch.setitem(sys.modules, "pypinyin", None)
 
     resolver = resolver_registry.get("auto")
-    out = resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext())
+    out = resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext(profile="cn_current"))
 
     assert out[0].pinyin is None
 
@@ -93,12 +93,12 @@ def test_auto_caches_delegate_across_calls(monkeypatch):
     monkeypatch.setitem(sys.modules, "g2pM", None)
     resolver = resolver_registry.get("auto")
     # Drive once to populate ``_delegate``.
-    resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext())
+    resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext(profile="cn_current"))
     cached = resolver._delegate
     assert cached is not None
     # Second call returns the same instance \u2014 the cache short-circuit
     # fires before any registry lookup happens.
-    resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext())
+    resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext(profile="cn_current"))
     assert resolver._delegate is cached
 
 
@@ -109,7 +109,7 @@ def test_auto_skips_self_name_in_preferred():
     from brailix.frontend.zh.pinyin.adapters.auto import AutoPinyinResolver
 
     resolver = AutoPinyinResolver(preferred=("auto", "null"))
-    out = resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext())
+    out = resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext(profile="cn_current"))
     # The null resolver leaves pinyin as None \u2014 that's how we know we
     # reached it instead of looping back into auto.
     assert len(out) == 1
@@ -124,7 +124,7 @@ def test_auto_raises_keyerror_when_no_candidates():
 
     resolver = AutoPinyinResolver(preferred=())
     with pytest.raises(KeyError, match="no candidates"):
-        resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext())
+        resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext(profile="cn_current"))
 
 
 def test_auto_re_raises_last_error_when_all_candidates_fail():
@@ -136,6 +136,6 @@ def test_auto_re_raises_last_error_when_all_candidates_fail():
 
     resolver = AutoPinyinResolver(preferred=("does_not_exist",))
     with pytest.raises(KeyError) as ei:
-        resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext())
+        resolver.resolve([ChineseToken(surface="\u6211")], FrontendContext(profile="cn_current"))
     # The last_error wins \u2014 its message names the missing adapter.
     assert "does_not_exist" in str(ei.value)

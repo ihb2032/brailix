@@ -81,14 +81,14 @@ class TestAnalyze:
 
 class TestWarnings:
     def test_word_not_in_text_warns(self):
-        ctx = FrontendContext(mode=RunMode.NORMAL)
+        ctx = FrontendContext(profile="cn_current", mode=RunMode.NORMAL)
         # THULAC returned a (normalized) word that isn't in the source.
         ThulacChineseAnalyzer(cut_fn=_cut([["X", ""]])).analyze("我", ctx)
         codes = {w.code for w in ctx.warnings}
         assert "THULAC_WORD_NOT_IN_TEXT" in codes
 
     def test_skipped_chars_warns(self):
-        ctx = FrontendContext(mode=RunMode.NORMAL)
+        ctx = FrontendContext(profile="cn_current", mode=RunMode.NORMAL)
         # "很" sits between the cursor and the next word "好" → gap warning.
         ThulacChineseAnalyzer(cut_fn=_cut([["好", ""]])).analyze("很好", ctx)
         codes = {w.code for w in ctx.warnings}

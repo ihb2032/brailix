@@ -28,7 +28,13 @@ from brailix.core.config.zh_ncb_tables import NcbCharOverrides
 from brailix.core.context import BackendContext
 from brailix.core.span import Span
 from brailix.ir.braille import BrailleCell
-from brailix.ir.inline import HanziChar, Word
+from brailix.ir.inline import HanziChar, HanziMarker, Word
+
+# The year marker 年 writes directly against its year digits with no
+# number→marker connector (NCB convention); every other date marker
+# (月/日/号/时/分/秒, …) takes the connector the way 10页 / 3个 do. This
+# rule lives here, not in the language-neutral number backend.
+_YEAR_MARKER = "年"
 
 # ---------------------------------------------------------------------------
 # Public entry points
@@ -57,6 +63,49 @@ def translate_hanzi_char(
         ctx=ctx,
         profile=profile,
     )
+
+
+def translate_date_marker(
+    marker: HanziMarker,
+    follows_number: bool,
+    ctx: BackendContext,
+    profile: BrailleProfile,
+) -> list[BrailleCell]:
+    """Chinese date marker → cells.
+
+    Owns the two Chinese-specific pieces the language-neutral
+    :func:`brailix.backend.number.translate_date` skeleton delegates here:
+    the number→marker **connector rule** (a connector ⠤ precedes a marker
+    that directly follows a Number, except the year marker 年 — NCB
+    convention) and the marker's **syllable reading** (via
+    :func:`translate_hanzi_char`, so a missing reading still degrades to a
+    MISSING_PINYIN warning + unknown cell, never a crash).
+    """
+    out: list[BrailleCell] = []
+    if follows_number and marker.surface != _YEAR_MARKER:
+        boundary = (
+            Span(marker.span.start, marker.span.start) if marker.span else None
+        )
+        out.append(
+            BrailleCell(
+                dots=profile.connector,
+                role="connector",
+                source_span=boundary,
+                source_text="",
+            )
+        )
+    out.extend(
+        translate_hanzi_char(
+            HanziChar(
+                surface=marker.surface,
+                span=marker.span,
+                reading=marker.reading,
+            ),
+            ctx,
+            profile,
+        )
+    )
+    return out
 
 
 # ---------------------------------------------------------------------------

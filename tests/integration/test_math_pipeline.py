@@ -88,7 +88,7 @@ class TestInlineMathAdapterCrash:
 class TestMathmlAdapterWiring:
     def test_mathml_round_trip(self):
         adapter = math_source_registry.get("mathml")
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(source="mathml", profile="cn_current")
         # Adapter directly returns the MathML string verbatim for the
         # mathml source format; we assert that to lock the contract.
         assert "<mi>x</mi>" in adapter.to_mathml("<math><mi>x</mi></math>", ctx)
@@ -107,7 +107,7 @@ class TestMathmlAdapterWiring:
         # still produces a MathInline but math stays None (covered by
         # TestMissingAdapter).
         pytest.importorskip("latex2mathml")
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("$x$")
         math_nodes = _find_math_nodes(result.ir)
         assert len(math_nodes) == 1
@@ -129,7 +129,7 @@ class TestMissingAdapter:
         monkeypatch.setitem(sys.modules, "latex2mathml.converter", None)
         math_source_registry.clear_cache()
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("a $x^2$ b")
 
         math_nodes = _find_math_nodes(result.ir)
@@ -140,7 +140,7 @@ class TestMissingAdapter:
         assert "MATH_ADAPTER_MISSING" in codes
 
     def test_unregistered_source_emits_warning(self):
-        ctx = MathContext(source="plain")
+        ctx = MathContext(source="plain", profile="cn_current")
 
         assert parse_math_tree("x", ctx) is None
 
@@ -169,7 +169,7 @@ class TestEndToEndLatex:
         monkeypatch.setitem(sys.modules, "latex2mathml.converter", fake_converter_mod)
         math_source_registry.clear_cache()
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("see $x^2$ now")
 
         math_nodes = _find_math_nodes(result.ir)
@@ -194,7 +194,7 @@ class TestEndToEndLatex:
         monkeypatch.setitem(sys.modules, "latex2mathml.converter", conv)
         math_source_registry.clear_cache()
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("$y$")
         payload = result.proofread_json()
         ir_blocks = payload["ir"]["blocks"]
@@ -214,7 +214,7 @@ class TestEndToEndBrailleRendering:
     def test_latex_inline_math_renders_to_braille(self):
         # End-to-end LaTeX → braille requires the latex2mathml adapter.
         pytest.importorskip("latex2mathml")
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text(r"$x^2$")
         rendered = result.render()
         assert isinstance(rendered, str)
@@ -240,7 +240,7 @@ class TestEndToEndBrailleRendering:
         monkeypatch.setitem(sys.modules, "latex2mathml.converter", conv)
         math_source_registry.clear_cache()
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("a $1/2$ b")
         rendered = result.render()
         assert isinstance(rendered, str)
@@ -282,7 +282,7 @@ class TestPipelineAttachMath:
         from brailix.core.context import FrontendContext
         from brailix.pipeline import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         ctx = FrontendContext(profile="cn_current")
         tree = ET.fromstring("<math><mi>x</mi></math>")
         node = MathInline(surface="x", source="mathml", math=tree)
@@ -353,7 +353,7 @@ class TestEmbeddedTextSpans:
         # document; its cells used to keep those 0-based spans, so a
         # proofread double-click on embedded text jumped to the start
         # of the file.  They are rebased onto the formula's own span.
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         text = "前面 $<math><mtext>中文</mtext></math>$ 后面"
         result = pipe.translate_text(text)
         node = _find_math_nodes(result.ir)[0]

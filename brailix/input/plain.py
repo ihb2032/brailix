@@ -23,7 +23,6 @@ per-cell proofread mapping stays aligned.
 
 from __future__ import annotations
 
-from brailix.core.defaults import DEFAULT_LANGUAGE, DEFAULT_PROFILE
 from brailix.core.span import Span
 from brailix.ir.document import Block, DocumentIR, Paragraph
 
@@ -64,8 +63,8 @@ def _add_chunk(blocks: list[Block], text: str, start: int, end: int) -> None:
 def parse_plain(
     text: str,
     *,
-    language: str = DEFAULT_LANGUAGE,
-    profile: str = DEFAULT_PROFILE,
+    language: str,
+    profile: str,
 ) -> DocumentIR:
     """Wrap ``text`` as a :class:`DocumentIR`, one :class:`Paragraph` per
     source line.

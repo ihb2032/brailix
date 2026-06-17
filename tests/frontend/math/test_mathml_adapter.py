@@ -87,5 +87,5 @@ class TestRegistry:
         assert adapter.to_mathml("<math/>", None) == "<math/>"
 
     def test_context_argument_accepted(self, adapter):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         assert adapter.to_mathml("<math/>", ctx) == "<math/>"

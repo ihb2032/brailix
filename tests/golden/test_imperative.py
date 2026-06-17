@@ -114,7 +114,7 @@ def test_data_bk_span_malformed_is_silently_ignored():
 def test_pipeline_reuse_isolates_calls():
     """Two translate_text calls back-to-back must produce independent
     results (no number_sign / capital_indicator state leak)."""
-    p = Pipeline()
+    p = Pipeline(profile="cn_current")
     a = p.translate_text(r"$1$").render()
     b = p.translate_text(r"$2$").render()
     assert a == "⠼⠁", a

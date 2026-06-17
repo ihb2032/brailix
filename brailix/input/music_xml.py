@@ -36,7 +36,6 @@ import os
 from pathlib import Path
 
 from brailix.core.context import MusicContext
-from brailix.core.defaults import DEFAULT_LANGUAGE, DEFAULT_PROFILE
 from brailix.ir.document import DocumentIR, ScoreBlock
 
 _MUSICXML_TEXT_SUFFIXES = frozenset({".musicxml", ".xml"})
@@ -62,8 +61,8 @@ ADAPTER_SCORE_SUFFIXES = frozenset(_ADAPTER_SCORE_SOURCES)
 def parse_musicxml(
     path: str | os.PathLike[str],
     *,
-    language: str = DEFAULT_LANGUAGE,
-    profile: str = DEFAULT_PROFILE,
+    language: str,
+    profile: str,
 ) -> DocumentIR:
     """Read a MusicXML / .mxl file and return a single-block
     :class:`DocumentIR`.
@@ -82,7 +81,7 @@ def parse_musicxml(
     p = Path(path)
     suffix = p.suffix.lower()
     if suffix in _MXL_SUFFIXES:
-        text = _unzip_mxl(p.read_bytes())
+        text = _unzip_mxl(p.read_bytes(), profile=profile)
     elif suffix in _MUSICXML_TEXT_SUFFIXES:
         # utf-8-sig strips a leading BOM (still raises on truly invalid
         # UTF-8, so the docstring's UnicodeDecodeError contract holds);
@@ -104,8 +103,8 @@ def parse_musicxml(
 def parse_score_file(
     path: str | os.PathLike[str],
     *,
-    language: str = DEFAULT_LANGUAGE,
-    profile: str = DEFAULT_PROFILE,
+    language: str,
+    profile: str,
 ) -> DocumentIR:
     """Read a non-MusicXML score file (``.mid`` / ``.midi`` / ``.abc``)
     and return a single-block :class:`DocumentIR`.
@@ -148,7 +147,9 @@ def parse_score_file(
     # adapter's optional dependency is absent — surfaced loudly here, the
     # same way parse_docx surfaces a missing ``docx`` extra.
     adapter = music_source_registry.get(source)
-    musicxml = adapter.to_musicxml(payload, MusicContext(source=source))
+    musicxml = adapter.to_musicxml(
+        payload, MusicContext(source=source, profile=profile)
+    )
 
     block = ScoreBlock(text=musicxml, source="musicxml")
     return DocumentIR(
@@ -157,7 +158,7 @@ def parse_score_file(
     )
 
 
-def _unzip_mxl(data: bytes) -> str:
+def _unzip_mxl(data: bytes, *, profile: str) -> str:
     """Decompress an .mxl payload to its inner MusicXML string.
 
     Reuses the existing :class:`MxlSourceAdapter` so the
@@ -171,5 +172,5 @@ def _unzip_mxl(data: bytes) -> str:
     from brailix.frontend.music.registry import music_source_registry
 
     return music_source_registry.get("mxl").to_musicxml(
-        data, MusicContext(source="mxl")
+        data, MusicContext(source="mxl", profile=profile)
     )

@@ -88,7 +88,6 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
-from brailix.core.defaults import DEFAULT_LANGUAGE, DEFAULT_PROFILE
 from brailix.core.errors import MissingExtraError, ParseError
 from brailix.input.docx._blocks import _iter_body_blocks
 from brailix.input.docx._ole import _build_ole_blob_map, _is_equation_ole
@@ -110,8 +109,8 @@ __all__ = (
 def parse_docx(
     path: str | os.PathLike[str],
     *,
-    language: str = DEFAULT_LANGUAGE,
-    profile: str = DEFAULT_PROFILE,
+    language: str,
+    profile: str,
     mathtype_fallback: str = "off",
     chem_detection: bool = False,
 ) -> DocumentIR:
@@ -412,8 +411,8 @@ def _mtef_recovery_needed(result: DocumentIR, equation_oles: int) -> bool:
 def parse_doc(
     path: str | os.PathLike[str],
     *,
-    language: str = DEFAULT_LANGUAGE,
-    profile: str = DEFAULT_PROFILE,
+    language: str,
+    profile: str,
     converter: str | None = None,
     chem_detection: bool = False,
 ) -> DocumentIR:

@@ -23,7 +23,7 @@ from brailix.renderer import renderer_registry
 
 class TestDefaultRendering:
     def test_no_arg_uses_default_renderer(self):
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("。")
         # 。 = ⠐⠆: two cells, no space on either side.
         # ⠐ = U+2810 (dot 5), ⠆ = U+2806 (dots 2,3).
@@ -32,7 +32,7 @@ class TestDefaultRendering:
     def test_default_renderer_propagated_from_pipeline(self):
         # When the user changes the pipeline default, the result picks
         # it up so ``result.render()`` honors the same choice.
-        pipe = Pipeline(default_renderer="unicode")
+        pipe = Pipeline(profile="cn_current", default_renderer="unicode")
         result = pipe.translate_text("")
         assert result.default_renderer == "unicode"
 
@@ -44,12 +44,12 @@ class TestDefaultRendering:
 
 class TestExplicitName:
     def test_explicit_unicode(self):
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("。")
         assert result.render("unicode") == chr(0x2810) + chr(0x2806)
 
     def test_unknown_renderer_raises_keyerror(self):
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("。")
         with pytest.raises(KeyError):
             result.render("does-not-exist")
@@ -98,7 +98,7 @@ class TestCustomRenderer:
     def test_cells_list_renderer(self):
         renderer_registry.register("cell-list-test", _CellListRenderer)
         try:
-            pipe = Pipeline()
+            pipe = Pipeline(profile="cn_current")
             result = pipe.translate_text("。")  # 。 = ⠐⠆ → two cells, no blank
             cells = result.render("cell-list-test")
             assert cells == [(5,), (2, 3)]
@@ -108,7 +108,7 @@ class TestCustomRenderer:
     def test_bytes_renderer(self):
         renderer_registry.register("bytes-test", _BytesRenderer)
         try:
-            pipe = Pipeline()
+            pipe = Pipeline(profile="cn_current")
             result = pipe.translate_text("。")  # ⠐ sums to 5, ⠆ sums to 5
             out = result.render("bytes-test")
             assert isinstance(out, bytes)
@@ -119,7 +119,7 @@ class TestCustomRenderer:
     def test_pipeline_default_can_be_a_custom_renderer(self):
         renderer_registry.register("cell-list-test", _CellListRenderer)
         try:
-            pipe = Pipeline(default_renderer="cell-list-test")
+            pipe = Pipeline(profile="cn_current", default_renderer="cell-list-test")
             result = pipe.translate_text("。")
             assert result.render() == [(5,), (2, 3)]
         finally:
@@ -135,7 +135,7 @@ class TestMultiFormat:
     def test_same_result_renders_multiple_formats(self):
         renderer_registry.register("cell-list-test", _CellListRenderer)
         try:
-            pipe = Pipeline()
+            pipe = Pipeline(profile="cn_current")
             result = pipe.translate_text("。")
             unicode_out = result.render("unicode")
             cells_out = result.render("cell-list-test")
@@ -155,7 +155,7 @@ class TestMultiFormat:
 
 class TestProofreadJson:
     def test_payload_has_no_rendered_field(self):
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         payload = pipe.translate_text("。").proofread_json()
         assert set(payload) == {"text", "ir", "braille_ir", "warnings"}
         # No "unicode_braille" / "rendered" field leaks in.
@@ -195,7 +195,7 @@ class TestSegmenterAndNormalizerFields:
 
         segmenter_registry.register("all-punct-test", _OneBigPunctSegmenter)
         try:
-            pipe = Pipeline(segmenter="all-punct-test")
+            pipe = Pipeline(profile="cn_current", segmenter="all-punct-test")
             # Pipe a single known-punct char through and confirm it
             # actually went through our segmenter.
             result = pipe.translate_text("。")
@@ -220,7 +220,7 @@ class TestSegmenterAndNormalizerFields:
 
         normalizer_registry.register("drop-test", _DropEverythingNormalizer)
         try:
-            pipe = Pipeline(normalizer="drop-test")
+            pipe = Pipeline(profile="cn_current", normalizer="drop-test")
             result = pipe.translate_text("。")
             # Nothing came through the normalizer → no cells rendered.
             assert result.render() == ""
@@ -248,7 +248,7 @@ class TestUnhandledSegmentType:
 
         segmenter_registry.register("mystery", _MysterySegmenter)
         try:
-            pipe = Pipeline(segmenter="mystery")
+            pipe = Pipeline(profile="cn_current", segmenter="mystery")
             result = pipe.translate_text("X")
             codes = {w.code for w in result.warnings}
             assert "UNHANDLED_SEGMENT_TYPE" in codes
@@ -259,7 +259,7 @@ class TestUnhandledSegmentType:
         from brailix import Pipeline
         from brailix.core.errors import StrictModeError
 
-        pipe = Pipeline(mode="strict", resolver="null")
+        pipe = Pipeline(profile="cn_current", mode="strict", resolver="null")
         with pytest.raises(StrictModeError):
             pipe.translate_text("重庆")
 
@@ -301,7 +301,7 @@ class TestRunModeEndToEnd:
         from brailix import Pipeline
         from brailix.core.errors import StrictModeError
 
-        pipe = Pipeline(mode="strict", analyzer="null", resolver="null")
+        pipe = Pipeline(profile="cn_current", mode="strict", analyzer="null", resolver="null")
         with pytest.raises(StrictModeError) as ei:
             pipe.translate_text(self.BAD_MATH)
         assert ei.value.warning.code == "MATH_ERROR"
@@ -310,7 +310,7 @@ class TestRunModeEndToEnd:
         from brailix import Pipeline
         from brailix.core.errors import WarningLevel
 
-        pipe = Pipeline(mode="normal", analyzer="null", resolver="null")
+        pipe = Pipeline(profile="cn_current", mode="normal", analyzer="null", resolver="null")
         result = pipe.translate_text(self.BAD_MATH)
         math_errs = [w for w in result.warnings if w.code == "MATH_ERROR"]
         assert math_errs, "expected a MATH_ERROR warning"
@@ -326,7 +326,7 @@ class TestRunModeEndToEnd:
         from brailix import Pipeline
         from brailix.core.errors import WarningLevel
 
-        pipe = Pipeline(mode="lenient", analyzer="null", resolver="null")
+        pipe = Pipeline(profile="cn_current", mode="lenient", analyzer="null", resolver="null")
         result = pipe.translate_text(self.BAD_MATH)
         math_errs = [w for w in result.warnings if w.code == "MATH_ERROR"]
         assert math_errs, "expected a MATH_ERROR warning"
@@ -344,7 +344,7 @@ class TestRunModeEndToEnd:
 
         results = {}
         for mode in ("normal", "lenient"):
-            pipe = Pipeline(mode=mode, analyzer="null", resolver="null")
+            pipe = Pipeline(profile="cn_current", mode=mode, analyzer="null", resolver="null")
             results[mode] = pipe.translate_text(self.BAD_MATH)
         # Recovery is identical...
         assert results["normal"].render() == results["lenient"].render()
@@ -359,7 +359,7 @@ class TestRunModeEndToEnd:
         assert level(results["lenient"]) is WarningLevel.WARN
 
         with pytest.raises(StrictModeError):
-            Pipeline(mode="strict", analyzer="null", resolver="null").translate_text(
+            Pipeline(profile="cn_current", mode="strict", analyzer="null", resolver="null").translate_text(
                 self.BAD_MATH
             )
 
@@ -376,7 +376,7 @@ class TestStandaloneResult:
         from brailix.ir.inline import Punct
 
         profile = load_profile("cn_current")
-        ctx = BackendContext()
+        ctx = BackendContext(profile="cn_current")
         doc = DocumentIR(blocks=[Paragraph(children=[Punct(surface="。")])])
         braille_doc = translate_document(doc, ctx, profile)
         result = TranslationResult(

@@ -49,7 +49,6 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from brailix.core.defaults import DEFAULT_LANGUAGE, DEFAULT_PROFILE
 from brailix.core.span import Span
 from brailix.ir.document import (
     Block,
@@ -99,8 +98,8 @@ _ALIGN_ATTR_RE = re.compile(r"\s*\{align=(center|right)\}\s*$", re.IGNORECASE)
 def parse_markdown(
     text: str,
     *,
-    language: str = DEFAULT_LANGUAGE,
-    profile: str = DEFAULT_PROFILE,
+    language: str,
+    profile: str,
 ) -> DocumentIR:
     """Parse ``text`` as Markdown into a :class:`DocumentIR`.
 

@@ -65,7 +65,7 @@ def word_overrides(cn_ncb):
 
 @pytest.fixture
 def ctx():
-    return BackendContext()
+    return BackendContext(profile="cn_current")
 
 
 def _has_tone(cells) -> bool:

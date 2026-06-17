@@ -30,7 +30,7 @@ def reset_source_cache():
 
 class TestMathmlInput:
     def test_mi_passthrough(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         tree = parse_math_tree("<math><mi>x</mi></math>", ctx)
         assert isinstance(tree, ET.Element)
         assert tree.tag == "math"
@@ -40,7 +40,7 @@ class TestMathmlInput:
         assert (tree[0].text or "").strip() == "x"
 
     def test_namespace_stripped(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         tree = parse_math_tree(
             '<math xmlns="http://www.w3.org/1998/Math/MathML">'
             "<mi>y</mi></math>",
@@ -51,7 +51,7 @@ class TestMathmlInput:
         assert tree[0].tag == "mi"
 
     def test_singleton_mrow_collapsed(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         tree = parse_math_tree(
             "<math><mrow><mi>x</mi></mrow></math>", ctx
         )
@@ -59,14 +59,14 @@ class TestMathmlInput:
         assert tree[0].tag == "mi"
 
     def test_nested_singleton_mrows_collapse(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         tree = parse_math_tree(
             "<math><mrow><mrow><mi>x</mi></mrow></mrow></math>", ctx
         )
         assert tree[0].tag == "mi"
 
     def test_whitespace_text_stripped(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         tree = parse_math_tree(
             "<math>   <mi>x</mi>   <mn>1</mn>   </math>", ctx
         )
@@ -74,14 +74,14 @@ class TestMathmlInput:
         assert [c.tag for c in tree] == ["mi", "mn"]
 
     def test_invalid_xml_yields_merror(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         tree = parse_math_tree("<math><not-closed>", ctx)
         # The normalizer wraps parse errors in <merror>.
         assert tree.tag == "math"
         assert tree[0].tag == "merror"
 
     def test_complex_mfrac(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         tree = parse_math_tree(
             "<math><mfrac><mn>1</mn><mn>2</mn></mfrac></math>", ctx
         )
@@ -98,14 +98,14 @@ class TestMathmlInput:
 
 class TestAdapterSelection:
     def test_plain_source_emits_missing_warning(self):
-        ctx = MathContext(source="plain")
+        ctx = MathContext(profile="cn_current", source="plain")
         result = parse_math_tree("x", ctx)
         assert result is None
         warnings = ctx.warnings.by_code("MATH_ADAPTER_MISSING")
         assert len(warnings) == 1
 
     def test_unknown_source_emits_missing_warning(self):
-        ctx = MathContext(source="nonsuch")
+        ctx = MathContext(profile="cn_current", source="nonsuch")
         result = parse_math_tree("x", ctx)
         assert result is None
         warnings = ctx.warnings.by_code("MATH_ADAPTER_MISSING")
@@ -131,7 +131,7 @@ class TestRaisingAdapterBackstop:
 
         math_source_registry.register("boom-raise-test", _Boom)
         try:
-            ctx = MathContext(source="boom-raise-test")
+            ctx = MathContext(profile="cn_current", source="boom-raise-test")
             tree = parse_math_tree("x + 1", ctx)
             assert tree is not None
             assert tree.find(".//merror") is not None
@@ -141,7 +141,7 @@ class TestRaisingAdapterBackstop:
             math_source_registry.unregister("boom-raise-test")
 
     def test_warning_carries_source_string(self):
-        ctx = MathContext(source="weird")
+        ctx = MathContext(profile="cn_current", source="weird")
         parse_math_tree("x", ctx)
         warnings = ctx.warnings.by_code("MATH_ADAPTER_MISSING")
         assert any("weird" in w.message for w in warnings)
@@ -154,7 +154,7 @@ class TestRaisingAdapterBackstop:
 
 class TestRoundTrip:
     def test_serialise_then_reparse_preserves_structure(self):
-        ctx = MathContext(source="mathml")
+        ctx = MathContext(profile="cn_current", source="mathml")
         original = (
             "<math><mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow></math>"
         )

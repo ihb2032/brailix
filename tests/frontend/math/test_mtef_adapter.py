@@ -680,7 +680,7 @@ class TestSurrogateMtcode:
         from brailix.frontend.math import parse_math_tree
 
         payload = B.v5_prelude() + B.v5_line(B.v5_char(0xD800)) + B.v5_end()
-        ctx = MathContext(source="mtef")
+        ctx = MathContext(profile="cn_current", source="mtef")
         tree = parse_math_tree(payload, ctx)  # must not raise
         assert tree is not None
         # The poisonous character is gone — the tree re-serialises and

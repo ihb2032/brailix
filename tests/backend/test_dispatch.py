@@ -31,7 +31,7 @@ def profile():
 
 @pytest.fixture
 def ctx():
-    return BackendContext()
+    return BackendContext(profile="cn_current")
 
 
 class TestDispatchPerNodeType:
@@ -171,7 +171,7 @@ class TestPipeline:
     def test_end_to_end(self):
         from brailix import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("我在重庆。")
         rendered = result.render()
         assert isinstance(rendered, str)
@@ -184,7 +184,7 @@ class TestPipeline:
     def test_empty_text(self):
         from brailix import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("")
         assert result.render() == ""
         assert len(result.warnings) == 0
@@ -194,14 +194,14 @@ class TestPipeline:
 
         # ``null`` resolver leaves pinyin empty \u2014 the backend then
         # warns with MISSING_PINYIN for every char.
-        pipe = Pipeline(resolver="null")
+        pipe = Pipeline(profile="cn_current", resolver="null")
         result = pipe.translate_text("\u6211")
         assert any(w.code == "MISSING_PINYIN" for w in result.warnings)
 
     def test_proofread_json_shape(self):
         from brailix import Pipeline
 
-        pipe = Pipeline()
+        pipe = Pipeline(profile="cn_current")
         result = pipe.translate_text("。")
         payload = result.proofread_json()
         assert set(payload) == {"text", "ir", "braille_ir", "warnings"}

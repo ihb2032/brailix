@@ -19,7 +19,7 @@ def profile():
 
 @pytest.fixture
 def ctx():
-    return BackendContext()
+    return BackendContext(profile="cn_current")
 
 
 class TestTranslateNumber:
@@ -409,3 +409,46 @@ class TestTranslateDate:
         cells = translate_date(node, ctx, profile)
         assert not any(c.role == "unknown" for c in cells)
         assert any(c.role == "zh_initial" for c in cells)
+
+
+class TestDateMarkerDecoupling:
+    """Guard: the date-marker rule (年 connector exemption + marker reading)
+    lives in the per-language ``LanguageBackend``, not in the
+    language-neutral number backend (ARCHITECTURE §7.6 / §12). Locks the
+    decoupling so the Chinese rule can't drift back into number.py."""
+
+    def test_number_module_has_no_chinese_date_rule(self):
+        import inspect
+
+        import brailix.backend.number as number_mod
+
+        src = inspect.getsource(number_mod)
+        assert "_DATE_CONNECTOR_EXEMPT" not in src
+        assert "backend.zh" not in src
+        assert "import zh" not in src
+
+    def test_zh_backend_owns_connector_rule(self, ctx, profile):
+        from brailix.backend.zh import translate_date_marker
+
+        year = HanziMarker(surface="年", span=Span(0, 1), reading="nian2")
+        month = HanziMarker(surface="月", span=Span(0, 1), reading="yue4")
+        # 年 following a number takes NO connector (NCB exemption)...
+        assert not any(
+            c.role == "connector"
+            for c in translate_date_marker(year, True, ctx, profile)
+        )
+        # ...but 月 does.
+        assert any(
+            c.role == "connector"
+            for c in translate_date_marker(month, True, ctx, profile)
+        )
+        # A marker that does not follow a number takes no connector either.
+        assert not any(
+            c.role == "connector"
+            for c in translate_date_marker(month, False, ctx, profile)
+        )
+
+    def test_language_backend_protocol_declares_marker_method(self):
+        from brailix.core.protocols import LanguageBackend
+
+        assert hasattr(LanguageBackend, "translate_date_marker")

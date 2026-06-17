@@ -23,14 +23,14 @@ class TestBomHandling:
     def test_bom_markdown_still_detects_heading(self, tmp_path: Path) -> None:
         path = tmp_path / "bom.md"
         path.write_bytes(b"\xef\xbb\xbf" + "# 标题\n".encode())
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         # A surviving BOM would make line one "﻿# 标题", failing ^#.
         assert isinstance(doc.blocks[0], Heading)
 
     def test_bom_plain_strips_bom(self, tmp_path: Path) -> None:
         path = tmp_path / "bom.txt"
         path.write_bytes(b"\xef\xbb\xbf" + "你好".encode())
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert doc.blocks[0].text == "你好"
 
 
@@ -40,7 +40,7 @@ class TestSuffixDispatch:
         # would produce; plain would lump it into one paragraph.
         path = tmp_path / "doc.md"
         path.write_text("# 标题\n\n- 一项\n- 二项\n", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Heading)
         assert isinstance(doc.blocks[1], List)
 
@@ -49,14 +49,14 @@ class TestSuffixDispatch:
     ) -> None:
         path = tmp_path / "doc.markdown"
         path.write_text("# 标题\n", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Heading)
 
     def test_suffix_is_case_insensitive(self, tmp_path: Path) -> None:
         # Windows / mixed-case filenames shouldn't fall through to plain.
         path = tmp_path / "doc.MD"
         path.write_text("# 标题\n", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Heading)
 
     def test_txt_suffix_routes_to_plain_parser(self, tmp_path: Path) -> None:
@@ -65,7 +65,7 @@ class TestSuffixDispatch:
         # adapter splits on blank lines but never interprets `#` / `-`).
         path = tmp_path / "doc.txt"
         path.write_text("# not a heading\n\n- not a list\n", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert len(doc.blocks) == 2
         assert all(isinstance(b, Paragraph) for b in doc.blocks)
         assert doc.blocks[0].text == "# not a heading"
@@ -74,14 +74,14 @@ class TestSuffixDispatch:
     def test_unknown_suffix_falls_back_to_plain(self, tmp_path: Path) -> None:
         path = tmp_path / "doc.log"
         path.write_text("一段日志。", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Paragraph)
         assert doc.blocks[0].text == "一段日志。"
 
     def test_no_suffix_falls_back_to_plain(self, tmp_path: Path) -> None:
         path = tmp_path / "README"
         path.write_text("项目说明", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Paragraph)
 
 
@@ -100,7 +100,7 @@ class TestXmlSniffing:
         # A .xml whose head is a MusicXML score becomes a ScoreBlock.
         path = tmp_path / "score.xml"
         path.write_text(_SCORE_XML, encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], ScoreBlock)
 
     def test_non_score_xml_falls_back_to_plain(self, tmp_path: Path) -> None:
@@ -112,7 +112,7 @@ class TestXmlSniffing:
             '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math>',
             encoding="utf-8",
         )
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Paragraph)
         assert not isinstance(doc.blocks[0], ScoreBlock)
 
@@ -120,7 +120,7 @@ class TestXmlSniffing:
         # The dedicated .musicxml suffix is unconditional (no sniff needed).
         path = tmp_path / "song.musicxml"
         path.write_text(_SCORE_XML, encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], ScoreBlock)
 
 
@@ -130,7 +130,7 @@ class TestEncoding:
         # library's primary use case and must survive read.
         path = tmp_path / "zh.txt"
         path.write_text("我在重庆。", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         assert doc.blocks[0].text == "我在重庆。"
 
     def test_non_utf8_bytes_raise(self, tmp_path: Path) -> None:
@@ -139,7 +139,7 @@ class TestEncoding:
         path = tmp_path / "gbk.txt"
         path.write_bytes("我在重庆。".encode("gbk"))
         with pytest.raises(UnicodeDecodeError):
-            parse_file(path)
+            parse_file(path, profile="cn_current", language="zh-CN")
 
 
 class TestPathHandling:
@@ -148,19 +148,19 @@ class TestPathHandling:
         # passing a ``Path`` directly.
         path = tmp_path / "doc.md"
         path.write_text("# 标题\n", encoding="utf-8")
-        doc = parse_file(str(path))
+        doc = parse_file(str(path), profile="cn_current", language="zh-CN")
         assert isinstance(doc.blocks[0], Heading)
 
     def test_missing_file_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
-            parse_file(tmp_path / "does_not_exist.md")
+            parse_file(tmp_path / "does_not_exist.md", profile="cn_current", language="zh-CN")
 
 
 class TestMetadataPropagation:
     def test_defaults_when_not_specified(self, tmp_path: Path) -> None:
         path = tmp_path / "doc.txt"
         path.write_text("hi", encoding="utf-8")
-        doc = parse_file(path)
+        doc = parse_file(path, profile="cn_current", language="zh-CN")
         # Defaults come from brailix.core.defaults; we don't pin the
         # exact value here so changing the default doesn't ripple
         # through this test.
@@ -191,7 +191,7 @@ class TestDocDispatch:
         path = tmp_path / "legacy.doc"
         path.write_bytes(b"\xd0\xcf\x11\xe0")  # OLE magic bytes
         with pytest.raises(ParseError) as exc:
-            parse_file(path)
+            parse_file(path, profile="cn_current", language="zh-CN")
         assert ".doc" in str(exc.value)
 
 
@@ -209,7 +209,7 @@ class TestMathtypeFallbackForwarding:
         # for the missing .docx instead). No python-docx needed: validation
         # precedes the docx import.
         with pytest.raises(ValueError, match="mathtype_fallback"):
-            parse_file(tmp_path / "missing.docx", mathtype_fallback="bogus")
+            parse_file(tmp_path / "missing.docx", mathtype_fallback="bogus", profile="cn_current", language="zh-CN")
 
     def test_pipeline_parse_file_reads_profile_feature(self, monkeypatch) -> None:
         # Pipeline.parse_file forwards the input.docx.mathtype_fallback profile
