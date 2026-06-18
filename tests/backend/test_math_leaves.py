@@ -77,11 +77,12 @@ class TestMi:
         ]
         assert [c.source_text for c in cells] == ["hyp", "h", "y", "p"]
 
-    def test_mi_all_caps_word_doubles_capital_sign(self, profile):
-        # Whole-word capitals: ⠠⠠ + bare letters (ABC → ⠠⠠⠁⠃⠉).
+    def test_mi_all_caps_word_keeps_single_capital_sign(self, profile):
+        # Math is not embedded English: an all-capital run keeps ONE
+        # capital sign (ABC → ⠠⠁⠃⠉), the per-class run carrying the case.
         cells, _ = emit(mml("<math><mi>ABC</mi></math>"), profile)
         assert [c.dots for c in cells] == [
-            (6,), (6,), (1,), (1, 2), (1, 4),
+            (6,), (1,), (1, 2), (1, 4),
         ]
 
     def test_mi_capital_then_lower_runs_split_per_docx(self, profile):

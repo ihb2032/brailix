@@ -1,21 +1,29 @@
-"""Shared letter-sign (case / script-class prefix) rule.
+"""Shared letter-sign (case / script-class prefix) rules.
 
-The case/script sign is written before
-the letter; consecutive letters of the SAME class (small/capital Latin,
-small/capital Greek) share one sign — only the first letter of the run
-takes it; a class change starts a new sign. So ``Abc`` → ⠠⠁⠰⠃⠉ and
-``πr`` → ⠨⠏⠰⠗, and the class change is what keeps mixed-case units
-(``mW`` → ⠰⠍⠠⠺) lossless.
+The case/script sign is written before the letter; consecutive letters
+of the SAME class (small/capital Latin, small/capital Greek) share one
+sign — only the first letter of the run takes it; a class change starts
+a new sign. So ``Abc`` → ⠠⠁⠰⠃⠉ and ``πr`` → ⠨⠏⠰⠗, and the class
+change is what keeps mixed-case units (``mW`` → ⠰⠍⠠⠺) lossless.
+:func:`iter_letter_runs` partitions text into those runs.
 
-On top of that rule sits the whole-word-capitals convention: an
-all-capital Latin run of two or more letters doubles the capital sign
-(``ABC`` → ⠠⠠⠁⠃⠉), after which the letters are written bare. A single
-⠠ then unambiguously means "only the first letter is capital".
+On top of that, the embedded-English text convention adds the
+whole-word-capitals sign: an all-capital Latin run of two or more
+letters DOUBLES the capital sign (``CPU`` → ⠠⠠⠉⠏⠥, ``MW`` → ⠠⠠⠍⠺),
+after which the letters are written bare; a single ⠠ then means "only
+the first letter is capital". :func:`letter_sign_repeats` encodes the
+doubling.
 
-Consumers: the math identifier emitter
-(``backend.math.handlers.leaves._emit_letter_runs``), the quantity-unit
-emitter (``backend.number.translate_quantity``), and the Latin text
-backend's whole-word-capitals branch (``backend.latin``).
+That doubling belongs to the embedded-English convention — English
+words and quantity units — NOT to math. A math identifier run is not
+embedded English: it keeps a single capital sign even when all-capital
+(``ABC`` → ⠠⠁⠃⠉), the per-class run structure alone carrying the case.
+
+Consumers — :func:`iter_letter_runs`: the math identifier emitter
+(``backend.math.handlers.leaves._emit_letter_runs``) and the
+quantity-unit emitter (``backend.number.translate_quantity``).
+:func:`letter_sign_repeats`: the quantity-unit emitter and the Latin
+text backend's whole-word-capitals branch (``backend.latin``).
 """
 
 from __future__ import annotations
@@ -51,9 +59,10 @@ def iter_letter_runs(
 
 
 def letter_sign_repeats(cls: str, run_len: int) -> int:
-    """How many times the run's letter sign is written: twice for an
-    all-capital Latin run of two or more letters (whole-word capitals,
-    ⠠⠠), once otherwise."""
+    """How many times an embedded-English run writes its letter sign:
+    twice for an all-capital Latin run of two or more letters
+    (whole-word capitals, ⠠⠠), once otherwise. Math identifier runs do
+    not use this — their all-capital runs keep a single sign."""
     return 2 if cls == "latin_upper" and run_len >= 2 else 1
 
 

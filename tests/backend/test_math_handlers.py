@@ -1073,14 +1073,16 @@ class TestFunctionNameCoalesce:
 
 
 class TestLetterRunCoalesce:
-    def test_all_caps_run_doubles_capital_sign(self, profile):
-        # A + B → whole-word capitals ⠠⠠ + bare letters.
+    def test_all_caps_run_keeps_single_capital_sign(self, profile):
+        # A + B coalesce into one all-capital run; math keeps a single
+        # capital sign (⠠⠁⠃), not the embedded-English doubled ⠠⠠.
         cells, _ = emit(mml("<math><mi>A</mi><mi>B</mi></math>"), profile)
-        assert [c.dots for c in cells] == [(6,), (6,), (1,), (1, 2)]
+        assert [c.dots for c in cells] == [(6,), (1,), (1, 2)]
 
     def test_mathvariant_normal_letters_merge(self, profile):
         # \mathrm{AB} arrives as mathvariant="normal" letters — upright
-        # words are exactly what the letter-run rule is for.
+        # words are exactly what the letter-run rule is for. Still math,
+        # so the all-capital run keeps a single capital sign (⠠⠁⠃).
         cells, _ = emit(
             mml(
                 '<math><mi mathvariant="normal">A</mi>'
@@ -1088,7 +1090,7 @@ class TestLetterRunCoalesce:
             ),
             profile,
         )
-        assert [c.dots for c in cells] == [(6,), (6,), (1,), (1, 2)]
+        assert [c.dots for c in cells] == [(6,), (1,), (1, 2)]
 
     def test_msub_slots_never_merge_to_function(self, profile):
         # l_n: base and subscript are SLOTS, not a sequence — they must

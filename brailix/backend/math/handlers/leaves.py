@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 
 from brailix.backend._digits import DigitRoles, emit_digit_run
 from brailix.backend._inline import rebase_translated_cells
-from brailix.backend._letters import iter_letter_runs, letter_sign_repeats
+from brailix.backend._letters import iter_letter_runs
 from brailix.backend.math.context import MathBrailleContext
 from brailix.backend.math.utils import (
     _NUMBER_BREAKING_ROLES,
@@ -158,14 +158,14 @@ def _emit_letter_runs(
 ) -> None:
     """Emit a stretch of letters with per-class letter signs.
 
-    The case/script sign is written
-    before the letter; consecutive letters of the SAME class share one
-    sign (only the first letter of the run takes it); a class change
-    starts a new sign — ``Abc`` → ⠠⠁⠰⠃⠉, ``πr`` → ⠨⠏⠰⠗. An
-    all-capital Latin run of two or more letters doubles the capital
-    sign (whole-word capitals): ``ABC`` → ⠠⠠⠁⠃⠉, after which the
-    letters are written bare; a single ⠠ then unambiguously means
-    "only the first letter is capital".
+    The case/script sign is written before the letter; consecutive
+    letters of the SAME class share one sign (only the first letter of
+    the run takes it); a class change starts a new sign — ``Abc`` →
+    ⠠⠁⠰⠃⠉, ``πr`` → ⠨⠏⠰⠗. An all-capital run keeps that single sign:
+    ``ABC`` → ⠠⠁⠃⠉. The whole-word-capitals doubling (⠠⠠) is an
+    embedded-English text convention (``backend.latin``) — a math
+    identifier is not embedded English, and the per-class run structure
+    already carries the case, so math never doubles.
 
     Characters without a letter class shouldn't reach here (callers
     pre-check via ``letter_class``); they degrade to the per-char
@@ -177,16 +177,15 @@ def _emit_letter_runs(
             _emit_identifier_char(cells, mctx, run)
             continue
         prefix = profile.math_structure(f"letter_prefix.{cls}")
-        for _ in range(letter_sign_repeats(cls, len(run))):
-            cells.extend(
-                BrailleCell(
-                    dots=dots,
-                    role="math_identifier",
-                    source_span=mctx.span,
-                    source_text=run,
-                )
-                for dots in prefix
+        cells.extend(
+            BrailleCell(
+                dots=dots,
+                role="math_identifier",
+                source_span=mctx.span,
+                source_text=run,
             )
+            for dots in prefix
+        )
         for ch in run:
             bare = profile.bare_letter(ch)
             if bare is None:  # unreachable: letter_class hit the same table
