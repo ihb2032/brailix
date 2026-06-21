@@ -454,7 +454,8 @@ def _convert_group_chr(node: ET.Element) -> list[ET.Element]:
     pr = _first_child(node, "groupChrPr")
     chr_val = _math_property_of(pr, "chr") if pr is not None else None
     pos = _math_property_of(pr, "pos") if pr is not None else None
-    chr_val = chr_val if chr_val is not None else "⏟"  # default underbrace
+    if not chr_val:  # absent OR explicit empty → default (as _convert_nary);
+        chr_val = "⏟"  # an empty <mo/> here would be a meaningless wrapper
     base = _first_child(node, "e")
     if base is None:
         return [mtext("(invalid groupChr)")]
@@ -483,7 +484,8 @@ def _convert_bar(node: ET.Element) -> list[ET.Element]:
 def _convert_acc(node: ET.Element) -> list[ET.Element]:
     pr = _first_child(node, "accPr")
     chr_val = _math_property_of(pr, "chr") if pr is not None else None
-    chr_val = chr_val if chr_val is not None else "̂"  # combining circumflex
+    if not chr_val:  # absent OR explicit empty → default (as _convert_nary);
+        chr_val = "̂"  # combining circumflex, not a meaningless empty <mo/>
     base = _first_child(node, "e")
     if base is None:
         return [mtext("(invalid acc)")]

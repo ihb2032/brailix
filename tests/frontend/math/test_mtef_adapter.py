@@ -423,6 +423,25 @@ class TestV3Templates:
         assert "<mi>x</mi>" in out
         assert "<mi>y</mi>" in out
 
+    def test_fence_selector_11_is_left_brace_right_paren(self):
+        # MTEF v3 tmLBRP (selector 11) is an asymmetric fence: left brace +
+        # right paren. It had been mis-copied from selector 12 as "( }"; the
+        # spec value is "{ )".
+        body = B.v3_simple_char_line(_ord("x"))
+        payload = B.v3_prelude() + B.v3_line(B.v3_tmpl(11, [body]))
+        out = _to_mathml(payload)
+        assert '<mo fence="true">{</mo>' in out
+        assert '<mo fence="true">)</mo>' in out
+
+    def test_fence_selector_12_stays_left_paren_right_brace(self):
+        # Selector 12 is a distinct, intentional MathType template (left paren
+        # + right brace) — the selector-11 fix must not touch it.
+        body = B.v3_simple_char_line(_ord("x"))
+        payload = B.v3_prelude() + B.v3_line(B.v3_tmpl(12, [body]))
+        out = _to_mathml(payload)
+        assert '<mo fence="true">(</mo>' in out
+        assert '<mo fence="true">}</mo>' in out
+
     def test_radical_selector_13(self):
         radicand = B.v3_simple_char_line(_ord("x"))
         deg = B.v3_null_line()

@@ -567,7 +567,7 @@ _V3_TMPL: dict[int, Callable[..., Any]] = {
     8: _v3_paren("{", "{"),
     9: _v3_paren("}", "}"),
     10: _v3_paren("}", "{"),
-    11: _v3_paren("(", "}"),
+    11: _v3_paren("{", ")"),  # tmLBRP: left brace / right paren (MTEF v3 spec)
     12: _v3_paren("(", "}"),
     13: _radical,
     14: _fraction,

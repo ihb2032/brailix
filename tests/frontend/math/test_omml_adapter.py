@@ -461,6 +461,30 @@ class TestNaryOptions:
         assert "∫" in out
         assert "<mi>x</mi>" in out
 
+    def test_group_chr_empty_chr_defaults_to_underbrace(self):
+        # An explicit empty <m:chr m:val=""/> must fall back to the default
+        # underbrace (⏟), not emit an empty <mo/> wrapper (mirrors nary).
+        out = OmmlMathSourceAdapter().to_mathml(_omml(
+            "<m:groupChr>"
+            "<m:groupChrPr><m:chr m:val=\"\"/></m:groupChrPr>"
+            "<m:e><m:r><m:t>x</m:t></m:r></m:e>"
+            "</m:groupChr>"
+        ))
+        assert "⏟" in out
+        assert "<mi>x</mi>" in out
+
+    def test_acc_empty_chr_defaults_to_circumflex(self):
+        # An explicit empty <m:chr m:val=""/> must fall back to the default
+        # combining circumflex (U+0302), not emit an empty <mo/>.
+        out = OmmlMathSourceAdapter().to_mathml(_omml(
+            "<m:acc>"
+            "<m:accPr><m:chr m:val=\"\"/></m:accPr>"
+            "<m:e><m:r><m:t>x</m:t></m:r></m:e>"
+            "</m:acc>"
+        ))
+        assert "̂" in out
+        assert "<mi>x</mi>" in out
+
 
 # ---------------------------------------------------------------------------
 # Robustness and option branches: byte input, paragraph wrappers, bare
