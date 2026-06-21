@@ -171,6 +171,12 @@ def load_profile(
     latin_letters = _load_letters_table(base, tables.get("latin"), cells_pool)
     greek_letters = _load_letters_table(base, tables.get("greek"), cells_pool)
 
+    # English IPA phonetic table (top-level ``tables.phonetic``) — a
+    # single file of IPA phoneme -> cell sequence, language/scheme-neutral
+    # the way ``tables.connector`` is. Absent → {} and the phonetic
+    # backend flags any phonetic region it meets.
+    phonetic = _load_phonetic_table(base, tables.get("phonetic"), cells_pool)
+
     # connector (⠤) — single cell, used by the backend for letter+hanzi
     # compound joiners (Connector). Top-level ``tables.connector`` (a
     # bare cells-pool ref like ``"c_36"``); absent → () and Connector
@@ -250,10 +256,33 @@ def load_profile(
         zh_exceptions=zh_exceptions,
         music=music,
         music_specs=music_specs,
+        phonetic=phonetic,
         lang_tables=lang_tables,
     )
     validate_profile(profile, payload, base, str(profile_path))
     return profile
+
+
+def _load_phonetic_table(
+    base: Path,
+    relative: str | None,
+    cells_pool: dict[str, tuple[int, ...]],
+) -> dict[str, tuple[tuple[int, ...], ...]]:
+    """Load the English IPA phonetic table (``tables.phonetic``).
+
+    One resource file mapping each IPA phoneme string to a cell sequence
+    (multi-cell for diphthongs / affricates / long vowels). Entries live
+    under a top-level ``phonetic`` group so the metadata keys (schema /
+    name / reference) sit beside them and aren't mistaken for cell refs —
+    the same shape the math loader reads its ``symbols`` section through.
+    Absent ref → ``{}`` (no phonetic support; the backend flags any
+    phonetic region it meets)."""
+    if not relative:
+        return {}
+    payload = _read_json(base / relative)
+    group = payload.get("phonetic")
+    src = group if isinstance(group, dict) else payload
+    return _resolve_table(src, cells_pool)
 
 
 def _load_lang_table(
@@ -357,6 +386,7 @@ __all__ = (
     "_load_music_tables",
     "_load_numbers_table",
     "_load_one_music_file",
+    "_load_phonetic_table",
     "_load_punct_spacing",
     "_load_punct_table",
     "_load_table",

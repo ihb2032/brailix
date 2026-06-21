@@ -16,6 +16,7 @@ Hierarchy:
       ├── Punct
       ├── LatinWord / LatinAcronym
       ├── CodeInline
+      ├── PhoneticInline    # IPA transcription; ``surface`` holds the raw phoneme run
       ├── MathInline        # ``math`` field holds the normalised MathML ET.Element tree
       ├── MusicInline       # ``score`` field holds the normalised MusicXML ET.Element tree
       ├── Space
@@ -154,6 +155,22 @@ class LatinAcronym(InlineNode):
 @dataclass(slots=True)
 class CodeInline(InlineNode):
     type: ClassVar[str] = "code_inline"
+
+
+@dataclass(slots=True)
+class PhoneticInline(InlineNode):
+    """An IPA phonetic transcription region (English pronunciation).
+
+    ``surface`` carries the raw phoneme run *without* the delimiters the
+    author wrote it in (``/həˈləʊ/`` and ``[həˈləʊ]`` both store
+    ``"həˈləʊ"``). There is no tree: a transcription is a flat sequence
+    of phonemes, so — like :class:`CodeInline` — the node just holds the
+    text and the backend (:mod:`brailix.backend.phonetic`) does the work,
+    greedily matching each phoneme against the profile's phonetic table
+    (longest first, so ``tʃ`` and ``eɪ`` win over ``t`` / ``e``).
+    """
+
+    type: ClassVar[str] = "phonetic_inline"
 
 
 @dataclass(slots=True)
@@ -300,6 +317,7 @@ _INLINE_REGISTRY: dict[str, type[InlineNode]] = {
         LatinWord,
         LatinAcronym,
         CodeInline,
+        PhoneticInline,
         MathInline,
         MusicInline,
         Space,

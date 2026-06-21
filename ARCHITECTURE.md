@@ -182,6 +182,7 @@ brailix/
 │       ├── cells.json        # globally named cell pool (shared)
 │       ├── numbers.json      # numbers: number sign + a–j (shared, used worldwide)
 │       ├── latin/ / greek/   # neutral alphabets (shared, scheme/language-agnostic)
+│       ├── phonetic.json     # English IPA phonetic symbols → cells (shared, English-Braille letter/digraph values, scheme-agnostic)
 │       ├── music/            # music resources (BANA 2015 tables + instruments/ + vocal/, international)
 │       ├── cn/               # Chinese braille resources
 │       │   ├── compounds.json # letter+hanzi compound-word lexicon (a Chinese-language fact, scheme-agnostic)
@@ -232,10 +233,13 @@ Inline token types:
 ```
 word / hanzi_char / number / hanzi_marker / date / quantity / percent /
 punct / latin_word / latin_acronym /
-code_inline / math_inline / music_inline / space / connector / unknown
+code_inline / phonetic_inline / math_inline / music_inline / space /
+connector / unknown
 ```
 
 > `hanzi_char` is the single-character fallback when segmentation fails; `unknown` keeps the pipeline running on anything else.
+
+> `phonetic_inline` is an English IPA transcription: a `/.../` or `[...]` region in prose whose content carries an IPA-distinct character is recognised by the segmenter as a protected region (same mechanism as `$...$`; math wins any conflict). The node holds only the phoneme run with its delimiters stripped, and `backend/phonetic` greedily longest-matches each phoneme against the profile's phonetic table (two-character phonemes like `tʃ` / `eɪ` beat their single-character prefixes), flagging a symbol the table doesn't define (a stress mark) with `PHONETIC_UNKNOWN_SYMBOL` rather than inventing braille.
 
 ### 5.3 Math and music as tree IRs
 

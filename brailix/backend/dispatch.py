@@ -24,6 +24,7 @@ from brailix.backend import latin as latin_backend
 from brailix.backend import math as math_backend
 from brailix.backend import music as music_backend
 from brailix.backend import number as number_backend
+from brailix.backend import phonetic as phonetic_backend
 from brailix.backend import punct as punct_backend
 from brailix.backend import zh as zh_backend
 from brailix.core.config import BrailleProfile
@@ -44,6 +45,7 @@ from brailix.ir.inline import (
     MusicInline,
     Number,
     Percent,
+    PhoneticInline,
     Punct,
     Quantity,
     Space,
@@ -70,6 +72,7 @@ _DISPATCH: dict[type[InlineNode], _Translator] = {
     LatinWord: latin_backend.translate_latin,
     LatinAcronym: latin_backend.translate_latin,
     CodeInline: punct_backend.translate_code_inline,
+    PhoneticInline: phonetic_backend.translate_phonetic,
     MathInline: math_backend.translate,
     MusicInline: music_backend.translate,
     Unknown: punct_backend.translate_unknown,

@@ -51,6 +51,7 @@
     "latin":  "resources/latin/letters.json",
     "greek":  "resources/greek/letters.json",
     "connector": "c_36",
+    "phonetic": "resources/phonetic.json",
     "zh": {
       "initials":    "resources/cn/current/initials.json",
       "finals":      "resources/cn/current/finals.json",

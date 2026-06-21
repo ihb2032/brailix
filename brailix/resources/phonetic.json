@@ -1,0 +1,67 @@
+{
+  "schema": "brailix.table.phonetic.v1",
+  "name": "phonetic_ipa_english",
+  "cell": "six_dot",
+  "reference": "English IPA phonetic symbols rendered with standard English-Braille letter / digraph values",
+  "_note": "International Phonetic Alphabet (English) symbol -> braille cell sequence. Universal / scheme-neutral, so it lives at the resources root beside latin/ greek/ music/, not under any region: the cell values follow the standard English-Braille letter and digraph conventions (p = dots-1234, θ = dots-1456 \"th\", ʃ = dots-156 \"sh\", ŋ = dots-1246 \"ng\"), independent of any regional Chinese-braille scheme, which is why cn_current and cn_ncb reference this one shared table identically. Each key is the IPA string a user types between phonetic delimiters (e.g. \"iː\", \"tʃ\", \"eɪ\"); values reference named cells (c_*) from cells.json. Multi-character symbols (long vowels iː, diphthongs eɪ, affricates tʃ) are stored whole and matched greedily longest-first by the backend, so a bare \"t\" and the affricate \"tʃ\" stay distinct. Both the IPA script g (ɡ, U+0261) and the ASCII g (U+0067) map to the same cell so either keystroke works. Stress marks (ˈ ˌ) are intentionally absent — they have no cell in this table and the backend flags them rather than inventing braille.",
+  "phonetic": {
+    "iː":  ["c_24", "c_25"],
+    "ɪ":   ["c_24"],
+    "e":   ["c_15"],
+    "æ":   ["c_146"],
+
+    "ʌ":   ["c_346"],
+    "ɜː":  ["c_126", "c_25"],
+    "ə":   ["c_126"],
+
+    "ɑː":  ["c_16", "c_25"],
+    "ɒ":   ["c_135"],
+    "ɔː":  ["c_135", "c_25"],
+    "ʊ":   ["c_136"],
+    "uː":  ["c_136", "c_25"],
+
+    "eɪ":  ["c_15", "c_24"],
+    "aɪ":  ["c_1", "c_24"],
+    "əʊ":  ["c_126", "c_136"],
+    "aʊ":  ["c_1", "c_136"],
+    "ɔɪ":  ["c_135", "c_24"],
+    "ɪə":  ["c_24", "c_126"],
+    "eə":  ["c_15", "c_126"],
+    "ʊə":  ["c_136", "c_126"],
+
+    "p":   ["c_1234"],
+    "b":   ["c_12"],
+    "t":   ["c_2345"],
+    "d":   ["c_145"],
+    "k":   ["c_13"],
+    "ɡ":   ["c_1245"],
+    "g":   ["c_1245"],
+
+    "m":   ["c_134"],
+    "n":   ["c_1345"],
+    "ŋ":   ["c_1246"],
+
+    "l":   ["c_123"],
+
+    "f":   ["c_124"],
+    "v":   ["c_1236"],
+    "θ":   ["c_1456"],
+    "ð":   ["c_12456"],
+    "s":   ["c_234"],
+    "z":   ["c_1356"],
+    "ʃ":   ["c_156"],
+    "ʒ":   ["c_2346"],
+    "h":   ["c_125"],
+    "r":   ["c_1235"],
+
+    "tʃ":  ["c_2345", "c_156"],
+    "dʒ":  ["c_145", "c_2346"],
+    "ts":  ["c_2345", "c_234"],
+    "dz":  ["c_145", "c_1356"],
+    "tr":  ["c_2345", "c_1235"],
+    "dr":  ["c_145", "c_1235"],
+
+    "w":   ["c_2456"],
+    "j":   ["c_245"]
+  }
+}
