@@ -170,6 +170,19 @@ class TestUmlautInput:
         assert p.initial == "l"
         assert p.final == "ü"
 
+    def test_nl_ue_is_umlaut(self):
+        # After n/l, ASCII "ue" is unambiguously "üe" (nüe 虐 / lüe 略). Without
+        # this it left an "ue" final absent from the table → blank cell +
+        # MISSING_FINAL (a silent mistranslation); the v-form already worked.
+        assert parse_pinyin("nue4").final == "üe"
+        assert parse_pinyin("lue4").final == "üe"
+
+    def test_nl_other_u_finals_keep_real_u(self):
+        # Only "ue" is rewritten — real [u] after n/l is untouched.
+        assert parse_pinyin("nu3").final == "u"        # 努
+        assert parse_pinyin("luan4").final == "uan"    # 乱
+        assert parse_pinyin("luo2").final == "uo"      # 罗
+
 
 class TestTone:
     def test_no_tone(self):

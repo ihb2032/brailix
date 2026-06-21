@@ -198,6 +198,13 @@ def _normalize_final(initial: str, final: str) -> str:
     # Must run BEFORE the un→uen contraction so xun stays ün rather than üen.
     if initial in ("j", "q", "x") and final.startswith("u"):
         final = "ü" + final[1:]
+    # n/l rule: after n or l, orthographic "ue" is unambiguously "üe"
+    # (nüe 虐 / lüe 略) — there is no n/l + [u] + e syllable. Only "ue" is
+    # rewritten, NOT every u-final: nu 努 / luan 乱 / luo 罗 keep their real
+    # [u] (unlike j/q/x). Without this, "nue"/"lue" leave an "ue" final that
+    # isn't in the finals table → blank cell + MISSING_FINAL (silent mistr.).
+    elif initial in ("n", "l") and final == "ue":
+        final = "ü" + final[1:]
 
     # iu / ui / un are *all* contracted forms. The phonological final
     # is the longer one — niu = n+iou, gui = g+uei, dun = d+uen, jiu
