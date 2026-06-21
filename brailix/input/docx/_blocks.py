@@ -66,6 +66,35 @@ _LIST_STYLE_RE = re.compile(
 # ---------------------------------------------------------------------------
 
 
+# Block-level wrappers Word places around whole paragraphs / tables.
+_TRANSPARENT_BLOCK_WRAPPERS = frozenset(
+    {"ins", "del", "moveFrom", "moveTo", "customXml"}
+)
+
+
+def _iter_effective_body_children(parent: Element):
+    """Yield the block-level children of ``parent`` in document order,
+    descending transparently through revision-tracking and content-control
+    wrappers Word can place around whole paragraphs / tables.
+
+    ``<w:ins>`` / ``<w:del>`` / ``<w:moveFrom>`` / ``<w:moveTo>`` /
+    ``<w:customXml>`` hold their blocks directly; a block-level ``<w:sdt>``
+    (content control) holds them under ``<w:sdtContent>``. Without this a
+    tracked-changes or content-control wrapped paragraph would be silently
+    dropped (the old ``else: continue`` in :func:`_iter_body_blocks`).
+    """
+    for child in parent:
+        tag = _local(child.tag)
+        if tag in _TRANSPARENT_BLOCK_WRAPPERS:
+            yield from _iter_effective_body_children(child)
+        elif tag == "sdt":
+            content = _first_local(child, "sdtContent")
+            if content is not None:
+                yield from _iter_effective_body_children(content)
+        else:
+            yield child
+
+
 def _iter_body_blocks(
     body: Element,
     *,
@@ -100,7 +129,7 @@ def _iter_body_blocks(
             pending_list = []
             pending_list_ordered = None
 
-    for child in body:
+    for child in _iter_effective_body_children(body):
         tag = _local(child.tag)
         if tag == "p":
             blocks = _convert_paragraph(
@@ -290,71 +319,93 @@ def _iter_paragraph_tokens(p: Element, ole_blobs: dict[str, bytes]):
     instead of being flattened into bare text.
     """
     field_state = _FieldState()
-    # Iterate top-level children only — ``.iter()`` would re-visit
-    # nested elements once their parent has handled them.
+    # Iterate top-level children only — ``.iter()`` would re-visit nested
+    # elements once their parent has handled them. Each child is dispatched by
+    # :func:`_emit_child_tokens`, which transparently recurses through
+    # run-container wrappers (revision tracking, content controls, smart tags)
+    # so their inline math / scripts survive instead of being scraped to text.
     for child in p:
-        tag = _local(child.tag)
-        if tag == "oMathPara":
-            yield ("block", _math_block_from_omath_para(child))
-        elif tag == "oMath":
-            yield ("math", _inline_math_as_text(child))
-        elif tag == "r":
-            vert = _run_vert_align(child)
-            for piece in _walk_run(child, ole_blobs, field_state):
-                if _is_inline_math(piece):
-                    yield ("math", piece)
-                else:
-                    yield ("text", piece, vert)
-        elif tag == "hyperlink":
-            # Hyperlinks wrap runs and may contain math too.
-            for hyper_child in child:
-                hyper_tag = _local(hyper_child.tag)
-                if hyper_tag == "r":
-                    hvert = _run_vert_align(hyper_child)
-                    for piece in _walk_run(hyper_child, ole_blobs, field_state):
-                        if _is_inline_math(piece):
-                            yield ("math", piece)
-                        else:
-                            yield ("text", piece, hvert)
-                elif hyper_tag == "oMath":
-                    yield ("math", _inline_math_as_text(hyper_child))
-                elif hyper_tag == "object":
-                    text = _ole_object_to_inline_math(hyper_child, ole_blobs)
-                    if text:
-                        yield ("math", text)
-        elif tag == "object":
-            text = _ole_object_to_inline_math(child, ole_blobs)
-            if text:
-                yield ("math", text)
-        elif tag == "fldSimple":
-            # Word's simple-field form: instruction in ``w:instr``
-            # attribute, result text as children. Skip the result text
-            # entirely since it's just Word's cached visual rendering.
-            instr = _ns_attr(child, _W_PREFIX, "instr") or ""
-            piece = _eq_field_to_inline_math(instr)
-            if piece is not None:
+        yield from _emit_child_tokens(child, ole_blobs, field_state)
+
+
+# Run-container wrappers Word places around ordinary inline content. They carry
+# no content of their own — their children are runs / math / nested wrappers
+# and must be walked the same way, never flattened to bare ``<w:t>`` text.
+_TRANSPARENT_RUN_WRAPPERS = frozenset(
+    {"ins", "del", "moveFrom", "moveTo", "smartTag", "customXml"}
+)
+
+
+def _emit_child_tokens(child: Element, ole_blobs, field_state):
+    """Yield paragraph tokens for one direct child of a ``<w:p>`` (or of a
+    transparent run-container wrapper).
+
+    Factored out of :func:`_iter_paragraph_tokens` so revision-tracking
+    (``<w:ins>`` / ``<w:del>`` / ``<w:moveFrom>`` / ``<w:moveTo>``),
+    content-control (``<w:sdt>``), smart-tag and custom-XML wrappers can
+    recurse through the *same* dispatch. Word emits ordinary runs — including
+    inline ``<m:oMath>`` islands, ``<w:object>`` OLE math and run
+    ``<w:vertAlign>`` scripts — inside these wrappers; the old text-only
+    ``else`` scrape destroyed all of that (a tracked-changes insertion of a
+    formula came out as bare literal text, an OLE equation vanished).
+    """
+    tag = _local(child.tag)
+    if tag == "oMathPara":
+        yield ("block", _math_block_from_omath_para(child))
+    elif tag == "oMath":
+        yield ("math", _inline_math_as_text(child))
+    elif tag == "r":
+        vert = _run_vert_align(child)
+        for piece in _walk_run(child, ole_blobs, field_state):
+            if _is_inline_math(piece):
                 yield ("math", piece)
-        elif tag == "AlternateContent":
-            # Word wraps OLE objects in <mc:AlternateContent> when both
-            # a modern (Choice) and legacy (Fallback) representation
-            # exist. Prefer Fallback for OLE math — Choice is usually
-            # the picture preview, which we can't read.
-            for piece, math in _walk_alternate_content(child, ole_blobs):
-                if math is not None:
-                    yield ("block", math)
-                elif piece:
-                    yield ("math", piece)
-        elif tag in ("pPr",):
-            # Paragraph properties — already consumed by style / list
-            # detection; skip here.
-            continue
-        else:
-            # Unknown wrapping element — descend best-effort to find
-            # text runs. Avoid descending into property sub-trees.
-            for sub in child.iter():
-                sub_tag = _local(sub.tag)
-                if sub_tag == "t":
-                    yield ("text", sub.text or "", None)
+            else:
+                yield ("text", piece, vert)
+    elif tag == "hyperlink":
+        # A hyperlink wraps ordinary runs / math — transparent to content.
+        for hyper_child in child:
+            yield from _emit_child_tokens(hyper_child, ole_blobs, field_state)
+    elif tag == "object":
+        text = _ole_object_to_inline_math(child, ole_blobs)
+        if text:
+            yield ("math", text)
+    elif tag == "fldSimple":
+        # Word's simple-field form: instruction in ``w:instr`` attribute,
+        # cached result text as children. Skip the result (visual rendering).
+        instr = _ns_attr(child, _W_PREFIX, "instr") or ""
+        piece = _eq_field_to_inline_math(instr)
+        if piece is not None:
+            yield ("math", piece)
+    elif tag == "AlternateContent":
+        # Word wraps OLE objects in <mc:AlternateContent> when both a modern
+        # (Choice) and legacy (Fallback) representation exist. Prefer Fallback
+        # for OLE math — Choice is usually the picture preview we can't read.
+        for piece, math in _walk_alternate_content(child, ole_blobs):
+            if math is not None:
+                yield ("block", math)
+            elif piece:
+                yield ("math", piece)
+    elif tag in _TRANSPARENT_RUN_WRAPPERS:
+        # Revision tracking / smart tag / custom XML: recurse into the inline
+        # content the wrapper carries.
+        for sub in child:
+            yield from _emit_child_tokens(sub, ole_blobs, field_state)
+    elif tag == "sdt":
+        # Structured-document tag (content control): inline content lives under
+        # <w:sdtContent>; <w:sdtPr> / <w:sdtEndPr> are properties, skip them.
+        content = _first_local(child, "sdtContent")
+        if content is not None:
+            for sub in content:
+                yield from _emit_child_tokens(sub, ole_blobs, field_state)
+    elif tag == "pPr":
+        # Paragraph properties — already consumed by style / list detection.
+        return
+    else:
+        # Genuinely unknown wrapping element — last-resort descend for bare
+        # text runs only. Avoid descending into property sub-trees.
+        for sub in child.iter():
+            if _local(sub.tag) == "t":
+                yield ("text", sub.text or "", None)
 
 
 # ---------------------------------------------------------------------------

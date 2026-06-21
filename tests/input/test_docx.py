@@ -422,6 +422,85 @@ class TestMath:
         assert "<msup>" in _island_mathml(islands[0])
 
 
+class TestRevisionAndContentControlWrappers:
+    """Revision-tracking (``<w:ins>`` / ``<w:del>`` …) and content-control
+    (``<w:sdt>``) wrappers are transparent to content: the runs / inline math
+    they wrap must parse exactly as if unwrapped, not be scraped to bare text.
+    Tracked changes is a routine real-document state (review / accessibility
+    remediation workflows), so a formula inside an insertion must not be
+    silently flattened to literal characters."""
+
+    def test_inline_omml_inside_tracked_insertion_survives(
+        self, tmp_path: Path
+    ) -> None:
+        path, doc = _make_docx(tmp_path)
+        para = doc.add_paragraph("公式 ")
+        ins = etree.fromstring(
+            f'<w:ins xmlns:w="{_W_NS}" xmlns:m="{_M_NS}" '
+            f'w:id="7" w:author="ed" w:date="2024-01-01T00:00:00Z">'
+            f'<m:oMath><m:sSup>'
+            f'<m:e><m:r><m:t>x</m:t></m:r></m:e>'
+            f'<m:sup><m:r><m:t>2</m:t></m:r></m:sup>'
+            f'</m:sSup></m:oMath>'
+            f'</w:ins>'
+        )
+        para._p.append(ins)
+        doc.save(path)
+
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
+        joined = "\n".join(
+            p.text or "" for p in result.blocks if isinstance(p, Paragraph)
+        )
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 1 and inline_math.is_tagged(islands[0])
+        assert inline_math.unwrap(islands[0])[0] == "omml"
+        assert "<msup>" in _island_mathml(islands[0])
+
+    def test_inline_omml_inside_content_control_survives(
+        self, tmp_path: Path
+    ) -> None:
+        path, doc = _make_docx(tmp_path)
+        para = doc.add_paragraph("公式 ")
+        sdt = etree.fromstring(
+            f'<w:sdt xmlns:w="{_W_NS}" xmlns:m="{_M_NS}"><w:sdtContent>'
+            f'<m:oMath><m:sSup>'
+            f'<m:e><m:r><m:t>x</m:t></m:r></m:e>'
+            f'<m:sup><m:r><m:t>2</m:t></m:r></m:sup>'
+            f'</m:sSup></m:oMath>'
+            f'</w:sdtContent></w:sdt>'
+        )
+        para._p.append(sdt)
+        doc.save(path)
+
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
+        joined = "\n".join(
+            p.text or "" for p in result.blocks if isinstance(p, Paragraph)
+        )
+        islands = _inline_math_islands(joined)
+        assert len(islands) == 1 and inline_math.is_tagged(islands[0])
+        assert "<msup>" in _island_mathml(islands[0])
+
+    def test_block_paragraph_inside_content_control_not_dropped(
+        self, tmp_path: Path
+    ) -> None:
+        # A whole paragraph wrapped in a block-level content control must not
+        # vanish (the old ``else: continue`` dropped every non-p/tbl child).
+        path, doc = _make_docx(tmp_path)
+        sdt = etree.fromstring(
+            f'<w:sdt xmlns:w="{_W_NS}"><w:sdtContent>'
+            f'<w:p><w:r><w:t>内容控件中的整段文字。</w:t></w:r></w:p>'
+            f'</w:sdtContent></w:sdt>'
+        )
+        doc.element.body.insert(0, sdt)
+        doc.save(path)
+
+        result = parse_docx(path, profile="cn_current", language="zh-CN")
+        joined = "\n".join(
+            p.text or "" for p in result.blocks if isinstance(p, Paragraph)
+        )
+        assert "内容控件中的整段文字" in joined
+
+
 # ---------------------------------------------------------------------------
 # MathType / Equation 3.0 OLE handling
 # ---------------------------------------------------------------------------
