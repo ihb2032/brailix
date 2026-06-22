@@ -68,7 +68,14 @@ def tokenize_math_text(text: str, *, comma_in_number: bool = True) -> list[ET.El
         # superscript / circled digit into <mn>, an accepted harmless edge in an
         # already-known-math run. (The prose segmenter is strict because there a
         # superscript must split off; see segment._is_digit.)
-        if ch.isdigit() or (ch in number_seps and i + 1 < n and text[i + 1].isdigit()):
+        # A number must START with a digit (or a decimal-point leader like
+        # ``.5``) — never a grouping separator: a leading ``,`` (e.g. the second
+        # comma in a malformed ``1,,2`` run) would otherwise open an <mn> whose
+        # text begins with a separator (``,2``), which isn't a valid number
+        # string and trips the backend's digit-run emitter. Separators still
+        # join digits in the *middle* of a run (the while-loop below), so
+        # ``1,000`` / ``3.14`` are unaffected.
+        if ch.isdigit() or (ch == "." and i + 1 < n and text[i + 1].isdigit()):
             j = i
             while j < n and (
                 text[j].isdigit()

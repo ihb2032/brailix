@@ -239,3 +239,46 @@ class TestChordReorderKeepsTieAndLyric:
         tie_cells = [c for c in cells if c.role == "music_tie"]
         assert [c.dots for c in tie_cells] == [(4, 6), (1, 4)]
         assert _roles(cells).count("music_lyric_marker") == 1
+
+
+# ---------------------------------------------------------------------------
+# Unreadable chord root must not reuse a stale root (regression)
+# ---------------------------------------------------------------------------
+
+
+class TestChordRootUnreadablePitch:
+    """Regression: when a chord's root ``<note>`` has a missing/malformed
+    ``<pitch>``, its interval members used to silently measure against a
+    STALE ``chord_root`` left over from an earlier note in the same
+    measure — emitting a real-but-wrong interval cell with no warning.
+    The root's parse failure now leaves ``chord_root`` None, so members
+    take the orphan-warning branch instead of writing wrong braille."""
+
+    def test_unreadable_root_does_not_reuse_prior_note_as_root(
+        self, profile, ctx,
+    ):
+        notes = [
+            # A normal melodic note first: sets chord_root=(G,4).
+            "<note>"
+            "<pitch><step>G</step><octave>4</octave></pitch>"
+            "<duration>4</duration><type>quarter</type></note>",
+            # Chord root with a malformed pitch (octave but no <step>):
+            # this <note> starts a run because the next sibling carries
+            # <chord/>.
+            "<note>"
+            "<pitch><octave>4</octave></pitch>"
+            "<duration>4</duration><type>quarter</type></note>",
+            "<note><chord/>"
+            "<pitch><step>E</step><octave>4</octave></pitch>"
+            "<duration>4</duration><type>quarter</type></note>",
+        ]
+        tree = _chord_block(notes)
+        cells = emit_tree(tree, ctx, profile)
+        # The member must NOT emit an interval measured from the stale
+        # (G,4) root; it orphans instead.
+        assert _roles(cells).count("music_interval") == 0
+        assert any(
+            w.code == "MUSIC_UNSUPPORTED_NOTATION"
+            and "without a prior root note" in w.message
+            for w in ctx.warnings.warnings
+        ), "chord member with an unreadable root must orphan-warn"

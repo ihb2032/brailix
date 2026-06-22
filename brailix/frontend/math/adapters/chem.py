@@ -431,6 +431,11 @@ def _emit_formula(inner: str) -> str:
             prev_boundary = False
             prev_was_connector = False
             prev_was_atom = False
+            # A bond ends the current atom for charge-grouping (like '+' / a
+            # connector): otherwise a charge after the bond pulls the bond <mo>
+            # into the polyatomic <msup> span instead of applying to the
+            # terminal atom alone.
+            species_atoms = 0
             continue
         if ch == "=" and prev_was_atom and not equals_is_yields:
             # A ``=`` tight against the preceding atom, where ``=`` isn't the
@@ -445,6 +450,7 @@ def _emit_formula(inner: str) -> str:
             prev_boundary = False
             prev_was_connector = False
             prev_was_atom = False
+            species_atoms = 0  # see the triple-bond branch above
             continue
         connector = _match_connector(inner, i)
         if connector is not None:

@@ -44,11 +44,46 @@ import xml.etree.ElementTree as ET
 from brailix.backend.math import handlers as _handlers  # noqa: F401
 from brailix.backend.math.context import MathBrailleContext
 from brailix.backend.math.dispatch import _emit_element
-from brailix.backend.math.utils import _coalesce_identifier_runs, _fallback_surface
+from brailix.backend.math.utils import (
+    _coalesce_identifier_runs,
+    _fallback_surface,
+    _unknown_cell,
+)
+from brailix.core._xml import tree_depth_exceeds
 from brailix.core.config import BrailleProfile
 from brailix.core.context import BackendContext
+from brailix.core.span import Span
 from brailix.ir.braille import BrailleCell
 from brailix.ir.inline import MathInline
+
+# A MathML tree deeper than this overflows the recursive descent through
+# _emit_element / handlers / _coalesce_identifier_runs (empirically ~470
+# levels at the default recursion limit). Real math nests under ~30 levels;
+# a corrupt / adversarial tree past the cap degrades to a soft failure
+# (one MATH_ERROR warning + a single unknown cell) instead of crashing — the
+# package's "pipeline never crashes" contract. The depth probe is iterative,
+# so the guard is itself depth-safe. A tree reaching the backend may have
+# skipped the frontend normalizer's matching guard (e.g. a .blx round-trip or
+# a directly-constructed MathInline), so the backend re-checks rather than
+# trusting upstream.
+_MAX_TREE_DEPTH = 150
+
+
+def _too_deep_fallback(
+    surface: str | None, span: Span | None, ctx: BackendContext
+) -> list[BrailleCell]:
+    """Soft-fail a tree nested past :data:`_MAX_TREE_DEPTH`: one MATH_ERROR
+    warning plus a single unknown cell, mirroring the ``<merror>`` handler."""
+    ctx.warnings.error(
+        code="MATH_ERROR",
+        message=(
+            f"formula nested deeper than {_MAX_TREE_DEPTH} levels; not rendered"
+        ),
+        surface=surface,
+        span=span,
+        source="backend.math",
+    )
+    return [_unknown_cell(surface or "?", span)]
 
 # ---------------------------------------------------------------------------
 # Public entry points
@@ -79,6 +114,9 @@ def translate(
         )
         return _fallback_surface(node.surface, node.span)
 
+    if tree_depth_exceeds(math_tree, _MAX_TREE_DEPTH):
+        return _too_deep_fallback(node.surface, node.span, ctx)
+
     # Copy-on-write: never mutate node.math (cached + serialized as IR).
     working_tree = _coalesce_identifier_runs(math_tree, profile)
     mctx = MathBrailleContext(profile=profile, backend=ctx, span=node.span)
@@ -95,6 +133,8 @@ def emit_tree(
     Equivalent to wrapping the element in a fresh :class:`MathInline`
     and calling :func:`translate`.
     """
+    if tree_depth_exceeds(elem, _MAX_TREE_DEPTH):
+        return _too_deep_fallback(None, None, ctx)
     working_tree = _coalesce_identifier_runs(elem, profile)
     mctx = MathBrailleContext(profile=profile, backend=ctx)
     cells: list[BrailleCell] = []

@@ -46,6 +46,20 @@ class TestTokenizeMathText:
             ("mn", "2"),
         ]
 
+    def test_leading_separator_does_not_open_number(self):
+        # mft-3: a malformed '1,,2' run must not open an <mn> whose text starts
+        # with a separator (',2') — the second comma can't lead a number.
+        assert _atoms("1,,2") == [
+            ("mn", "1"),
+            ("mo", ","),
+            ("mo", ","),
+            ("mn", "2"),
+        ]
+        # A decimal-point leader still opens a number; mid-run separators still
+        # join, so '.5' / '1,000' are unaffected.
+        assert _atoms(".5") == [("mn", ".5")]
+        assert _atoms("1,000") == [("mn", "1,000")]
+
     def test_identifier_run_coalesces(self):
         assert _atoms("sin") == [("mi", "sin")]
 

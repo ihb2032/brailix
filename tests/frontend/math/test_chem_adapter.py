@@ -131,6 +131,19 @@ class TestConvertCe:
         ]
         assert len(bonds) == 1 and bonds[0].text == "≡"
 
+    def test_charge_after_bond_does_not_swallow_bond(self):
+        # chem-bond: a charge after a structural bond must apply to the terminal
+        # atom alone — the bond <mo> must NOT be pulled into the charge <msup>
+        # group (a malformed input, but it should degrade cleanly).
+        root = ET.fromstring(convert_ce("N#N^2-"))
+        assert any(  # the triple-bond marker still exists...
+            e.get("data-bk-chem-bond") == "triple" for e in root.iter(f"{_NS}mo")
+        )
+        for msup in root.iter(f"{_NS}msup"):  # ...and none sits inside a charge
+            assert all(
+                e.get("data-bk-chem-bond") is None for e in msup.iter(f"{_NS}mo")
+            )
+
     def test_leading_coefficient_is_mn(self):
         root = ET.fromstring(convert_ce("2H2O"))
         # 2 H2O → <mn>2</mn> then the molecule.

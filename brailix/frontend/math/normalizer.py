@@ -41,8 +41,17 @@ from brailix.core._xml import (
     safe_fromstring,
     strip_namespace,
     strip_whitespace_text,
+    tree_depth_exceeds,
 )
 from brailix.frontend.math.utils import merror_wrap
+
+# A MathML tree deeper than this would overflow the recursive normalization
+# passes below (and the math backend's recursive descent downstream). Real
+# math nests well under ~30 levels; a corrupt / adversarial tree past the cap
+# degrades to a single ``<merror>`` here instead of raising — honouring the
+# "normalizer never raises" contract. The depth probe is iterative, so the
+# guard itself is depth-safe.
+_MAX_MATHML_DEPTH = 150
 
 
 def normalize(mathml: str) -> ET.Element:
@@ -57,6 +66,18 @@ def normalize(mathml: str) -> ET.Element:
         root = safe_fromstring(mathml)
     except ET.ParseError as e:
         root = ET.fromstring(merror_wrap(mathml, reason=f"parse error: {e}"))
+    if tree_depth_exceeds(root, _MAX_MATHML_DEPTH):
+        # Too deep for the recursive passes below — degrade to a <merror>
+        # (shallow, so it sails through them) rather than overflow the stack.
+        # Strip its namespace too, so the backend dispatches the bare
+        # <merror> tag exactly as on the parse-error path.
+        degraded = ET.fromstring(
+            merror_wrap(
+                "", reason=f"formula nested deeper than {_MAX_MATHML_DEPTH} levels"
+            )
+        )
+        strip_namespace(degraded)
+        return degraded
     strip_namespace(root)
     _drop_presentational(root)
     _collapse_singleton_mrows(root)
