@@ -20,6 +20,7 @@ from typing import Any
 
 from brailix.core.config._helpers import _is_metadata_key, _read_json
 from brailix.core.config.loader._refs import _resolve_cell_refs
+from brailix.core.errors import ConfigurationError
 
 
 def _load_music_tables(
@@ -70,30 +71,44 @@ def _load_one_music_file(
     sequence).
     """
     payload = _read_json(path)
-    body = _music_body(payload)
+    body = _music_body(payload, path)
     out: dict[str, tuple[tuple[int, ...], ...]] = {}
     for entity_name, entry in body.items():
-        if not isinstance(entry, dict):
+        if _is_metadata_key(entity_name):
             continue
-        refs = entry.get("cells")
-        if not isinstance(refs, list):
-            continue
-        cells = _resolve_music_cells(refs, cells_pool, entity_name, path)
+        if not isinstance(entry, dict) or not isinstance(entry.get("cells"), list):
+            raise ConfigurationError(
+                f"{path}: music entry {entity_name!r} must be an object with a "
+                f"'cells' list; a typo'd key or shape would otherwise drop the "
+                f"entity (note / octave / dynamic) silently from the table"
+            )
+        cells = _resolve_music_cells(entry["cells"], cells_pool, entity_name, path)
         out[entity_name] = cells
     return out
 
 
-def _music_body(payload: dict[str, Any]) -> dict[str, Any]:
-    """Return the single non-metadata body key from a music resource."""
+def _music_body(payload: dict[str, Any], path: Path) -> dict[str, Any]:
+    """Return the single non-metadata body topic from a music resource.
+
+    A music file carries exactly one cells topic (plus optional metadata
+    and ``_``-prefixed spec sections). Two non-metadata dicts is a typo
+    (e.g. both ``notes`` and ``note``) that would otherwise silently drop
+    whichever dict-iteration order placed second, so it is a hard error.
+    Zero body topics (a spec-only or empty file) is tolerated.
+    """
     META = {"schema", "name", "cell", "status", "source"}
-    for k, v in payload.items():
-        if k in META:
-            continue
-        if _is_metadata_key(k):
-            continue
-        if isinstance(v, dict):
-            return v
-    return {}
+    bodies = [
+        k
+        for k, v in payload.items()
+        if k not in META and not _is_metadata_key(k) and isinstance(v, dict)
+    ]
+    if len(bodies) > 1:
+        raise ConfigurationError(
+            f"{path}: music resource has multiple body topics {bodies!r}; "
+            f"expected exactly one — a duplicate or typo'd topic key would "
+            f"drop a whole topic silently"
+        )
+    return payload[bodies[0]] if bodies else {}
 
 
 def _resolve_music_cells(

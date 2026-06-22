@@ -389,7 +389,16 @@ def _validate_math_symbols(
 
 
 def _validate_math_functions(base: Path, relative: str | None) -> None:
-    """Check ``big_op`` / ``script_prefix`` in functions.json are bools."""
+    """Validate functions.json entries.
+
+    Each non-metadata entry must be a cell spec :func:`_resolve_table` can
+    resolve (a ref string, a non-empty ref list, or an object with
+    ``cells`` / ``dots``). An entry that carries only flags (e.g.
+    ``{"big_op": true}`` with no ``cells``) would otherwise be silently
+    dropped by the loader, leaving that function name with no braille and
+    no diagnostic. ``big_op`` / ``script_prefix`` flags, when present, must
+    be bool.
+    """
     if not relative:
         return
     payload = _read_json(base / relative)
@@ -399,10 +408,15 @@ def _validate_math_functions(base: Path, relative: str | None) -> None:
     for raw_key, spec in functions.items():
         if _is_metadata_key(raw_key):
             continue
-        if not isinstance(spec, dict):
-            continue
-        _check_bool_flag(spec, "big_op", raw_key, relative)
-        _check_bool_flag(spec, "script_prefix", raw_key, relative)
+        if not _is_valid_cell_spec(spec):
+            raise ConfigurationError(
+                f"{relative}: function entry {raw_key!r} is not a valid cell "
+                f"spec; expected a cell ref string, a non-empty list of refs, "
+                f"or an object with 'cells' or 'dots', got {spec!r}"
+            )
+        if isinstance(spec, dict):
+            _check_bool_flag(spec, "big_op", raw_key, relative)
+            _check_bool_flag(spec, "script_prefix", raw_key, relative)
 
 
 def _validate_math_structures(base: Path, relative: str | None) -> None:

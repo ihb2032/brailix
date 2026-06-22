@@ -819,15 +819,27 @@ class TestFunctionsValidationDefensiveBranches:
         })
         load_profile(name, root=tmp_path)
 
-    def test_non_dict_function_spec_is_skipped(self, tmp_path):
-        # A bare-list functions entry is accepted by the loader (it's
-        # just a cell-ref list), so the validator should ``continue``
-        # past it rather than raise. The bool-flag checks only apply
-        # to dict-shaped entries.
+    def test_non_dict_function_spec_is_accepted(self, tmp_path):
+        # A bare-list functions entry is a valid cell spec (a ref list),
+        # so it passes validation; the bool-flag checks only apply to
+        # dict-shaped entries.
         name = _write_profile(tmp_path, functions={
             "abbreviation_only": ["c_1"],
         })
         load_profile(name, root=tmp_path)
+
+    def test_function_entry_without_cells_raises(self, tmp_path):
+        # An entry carrying only flags (no cells/dots) used to be silently
+        # dropped by the loader, leaving the function name with no braille
+        # and no diagnostic. It must now fail loud at load.
+        name = _write_profile(tmp_path, functions={
+            "lim": {"big_op": True},  # forgot the 'cells' list
+        })
+        with pytest.raises(ConfigurationError) as ei:
+            load_profile(name, root=tmp_path)
+        msg = str(ei.value)
+        assert "lim" in msg
+        assert "cell spec" in msg
 
 
 # ---------------------------------------------------------------------------
