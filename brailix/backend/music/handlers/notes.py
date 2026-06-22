@@ -346,6 +346,15 @@ def _emit_chord_run(
     else:
         ordered = run
 
+    # Clear the chord root before emitting this chord's written note so
+    # interval members never measure against a STALE root left over from a
+    # prior note in the measure. On success _emit_note(chord_role="root")
+    # sets chord_root to the real written pitch (below); if the root's
+    # <pitch> is missing/malformed it early-returns via warn_and_fallback
+    # WITHOUT setting it, so chord_root stays None and _emit_chord_interval
+    # takes its root-is-None orphan-warning branch instead of writing wrong
+    # braille measured from an unrelated earlier note.
+    mctx.chord_root = None
     _emit_note(cells, mctx, ordered[0], chord_role="root")
     for note in ordered[1:]:
         _emit_note(cells, mctx, note, chord_role="interval")
