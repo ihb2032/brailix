@@ -113,6 +113,13 @@ class BrailleProfile:
     # ``chord_symbols`` -> ``kind_spec`` -> chord-kind emit recipes),
     # loaded from ``_``-prefixed sections the cells loader skips.
     music_specs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # English IPA phonetic table: IPA phoneme string -> cell sequence
+    # (``"tʃ" -> ((2,3,4,5),(1,5,6))``). Multi-character phonemes
+    # (diphthongs eɪ / affricates tʃ / long vowels iː) are stored whole;
+    # the phonetic backend matches greedily longest-first so a 2-char
+    # phoneme wins over its 1-char prefix. Empty when a profile declares
+    # no ``tables.phonetic``.
+    phonetic: dict[str, tuple[tuple[int, ...], ...]] = field(default_factory=dict)
     # Per-language braille tables (ARCHITECTURE §7.6 generic language
     # slot): subtag -> table name -> entry -> cell sequence, e.g.
     # ``lang_tables["ja"]["kana"]["カ"] == ((1, 6),)``. New languages put
@@ -368,6 +375,23 @@ class BrailleProfile:
         that as "skip this marker" rather than crashing.
         """
         return self.math_structures.get(name, ())
+
+    # -- Phonetic (English IPA) -----------------------------------------
+
+    def phonetic_symbol(self, symbol: str) -> tuple[tuple[int, ...], ...] | None:
+        """Cell sequence for one IPA phoneme (``"iː"`` / ``"tʃ"`` /
+        ``"ə"``), or ``None`` when it isn't in the profile's phonetic
+        table. The backend greedily matches the longest phoneme first, so
+        a multi-character symbol resolves ahead of its single-character
+        prefix (``tʃ`` before ``t``)."""
+        return self.phonetic.get(symbol)
+
+    def phonetic_max_symbol_len(self) -> int:
+        """Longest IPA key length in the phonetic table (``0`` when
+        empty). The phonetic backend uses this as the upper bound for its
+        greedy longest-match scan, so the table — not a hardcoded 2 —
+        decides how far each match may reach."""
+        return max((len(key) for key in self.phonetic), default=0)
 
     # -- Music (BANA 2015 Music Braille Code) ---------------------------
 

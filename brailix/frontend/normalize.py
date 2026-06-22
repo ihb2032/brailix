@@ -38,6 +38,7 @@ from brailix.ir.inline import (
     MathInline,
     Number,
     Percent,
+    PhoneticInline,
     Punct,
     Quantity,
     Segment,
@@ -349,6 +350,16 @@ def _try_atomic(seg: Segment) -> InlineNode | None:
             inner = inner[1:-1]
         source = "mathml" if inner.lstrip().startswith("<math") else "latex"
         return MathInline(surface=seg.surface, span=seg.span, source=source)
+    if seg.type == "phonetic_inline":
+        # A protected ``/.../`` / ``[...]`` IPA region from the segmenter.
+        # Strip the one-char delimiters so the node carries the bare
+        # phoneme run; the span narrows to the inner content so each
+        # braille cell maps back onto the phoneme the author typed (the
+        # delimiters produce no cells). The segmenter only emits this type
+        # for a well-formed paired region, so surface is always ≥2 chars.
+        inner = seg.surface[1:-1]
+        span = Span(seg.span.start + 1, seg.span.end - 1) if seg.span else None
+        return PhoneticInline(surface=inner, span=span)
     if seg.type == "math_op":
         # Single half-width math operator (`(`, `)`, `+`, `=`, ...) in
         # prose. Build the trivial MathML tree directly so the math

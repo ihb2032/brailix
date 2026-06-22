@@ -38,7 +38,8 @@ ChineseAnalyzer):
   ``profile.letter()`` already picks the right prefix per character.
 * ``punct``       — any single punctuation char.
 * ``space``       — whitespace run.
-* ``math_inline`` — protected region.
+* ``math_inline`` — protected ``$...$`` region.
+* ``phonetic_inline`` — protected ``/.../`` or ``[...]`` IPA transcription.
 * ``unknown``     — anything we don't classify.
 """
 
@@ -80,6 +81,26 @@ from brailix.ir.inline import Segment
 # in prose would otherwise UNKNOWN_PUNCT and surface as a blank cell
 # (e.g. ``x=-5`` rendered ``=`` followed by a stray space).
 _BARE_MATH_OPERATORS: frozenset[str] = frozenset("()[]{}+-*/=<>|")
+
+
+# Phonetic-transcription regions. A region opens with a delimiter and
+# closes with its partner on the same line: ``/.../`` (slashes, the
+# modern phonemic convention) and ``[...]`` (brackets) are both accepted.
+# Recognised as a protected region — like ``$...$`` math — but only when
+# the content *looks like* IPA (see :func:`_qualifies_as_phonetic`), so a
+# plain slashed / bracketed run in prose (``input/output``, ``[注1]``)
+# stays untouched.
+_PHONETIC_DELIMITERS: dict[str, str] = {"/": "/", "[": "]"}
+
+# Characters that distinctly mark an IPA transcription: the non-ASCII
+# phonemes of the English phonetic inventory plus the length mark ``ː``
+# and the two stress marks ``ˈ`` / ``ˌ``. Their presence is what tells a
+# phonetic ``/.../`` from a file path: a region qualifies as phonetic
+# only if at least one of these appears in it. This is a frontend
+# character-class fact ("what an IPA region looks like"), kept separate
+# from the backend's braille mapping; ``tests`` assert every non-ASCII
+# symbol in the phonetic table is covered here so the two can't drift.
+_IPA_DISTINCT_CHARS: frozenset[str] = frozenset("ɪʌɜəɑɒɔʊŋθðʃʒɡːæˈˌ")
 
 
 # ---------------------------------------------------------------------------
@@ -242,14 +263,89 @@ def _iter_inline_math_spans(text: str) -> Iterator[tuple[int, int, str]]:
         i = close + 1
 
 
+def _qualifies_as_phonetic(inner: str) -> bool:
+    """Whether a delimited region's content looks like an IPA transcription.
+
+    True only when every non-space character is phonetic-class — an ASCII
+    letter or an IPA-distinct character (:data:`_IPA_DISTINCT_CHARS`) —
+    *and* at least one is IPA-distinct. Requiring an IPA-distinct
+    character is what keeps ordinary slashed / bracketed prose out: a file
+    path (``input/output``), a ratio (``5/17``), a footnote ref
+    (``[注1]``) carries no IPA symbol, so it stays plain text. The cost is
+    that a rare all-ASCII transcription (``/pet/``) isn't auto-recognised
+    — but almost every English transcription carries a schwa / ɪ / æ / ː /
+    ŋ / ʃ, so in practice this captures real phonetics and nothing else.
+    """
+    if not inner:
+        return False
+    has_distinct = False
+    for ch in inner:
+        if ch.isspace():
+            continue
+        if ch in _IPA_DISTINCT_CHARS:
+            has_distinct = True
+        elif not _is_latin(ch):
+            # A digit, punctuation, CJK char, ``$`` … — not a transcription.
+            return False
+    return has_distinct
+
+
+def _iter_phonetic_spans(text: str) -> Iterator[tuple[int, int, str]]:
+    r"""Yield ``(start, end, "phonetic_inline")`` for each ``/.../`` or
+    ``[...]`` region whose content qualifies as an IPA transcription.
+
+    A region opens with ``/`` or ``[`` and closes with its partner (``/``
+    / ``]``) on the same line; the content between must be non-empty,
+    newline-free, and pass :func:`_qualifies_as_phonetic`. A delimited run
+    that doesn't look like IPA (a path, a footnote ref) is left as plain
+    text — the opener just advances by one, so a genuine transcription
+    later on the same line is still found.
+    """
+    i = 0
+    n = len(text)
+    while i < n:
+        close_ch = _PHONETIC_DELIMITERS.get(text[i])
+        if close_ch is None:
+            i += 1
+            continue
+        close = text.find(close_ch, i + 1)
+        if close == -1 or "\n" in text[i + 1 : close]:
+            i += 1
+            continue
+        if _qualifies_as_phonetic(text[i + 1 : close]):
+            yield (i, close + 1, "phonetic_inline")
+            i = close + 1
+        else:
+            i += 1
+
+
+def _overlaps_any(
+    span: tuple[int, int, str], others: list[tuple[int, int, str]]
+) -> bool:
+    """True if ``span`` shares any character range with one in ``others``
+    (half-open intervals)."""
+    start, end, _ = span
+    return any(start < o_end and o_start < end for o_start, o_end, _ in others)
+
+
 def _find_protected_regions(text: str) -> list[tuple[int, int, str]]:
     """Return non-overlapping protected regions sorted by start position.
 
-    Currently the only protected region is ``$...$`` inline math, scanned
-    by :func:`_iter_inline_math_spans`, which yields disjoint, ordered
-    spans by construction.
+    Two kinds are protected: ``$...$`` inline math (scanned by
+    :func:`_iter_inline_math_spans`) and ``/.../`` / ``[...]`` phonetic
+    transcriptions (:func:`_iter_phonetic_spans`). Math is scanned first
+    and wins every conflict — a phonetic candidate overlapping a math
+    island (a stray ``/`` pair inside ``$a/b/c$``) is dropped — so the two
+    never overlap. Each scanner yields disjoint, ordered spans on its own;
+    the merged list is re-sorted by start so the caller walks it in order.
     """
-    return list(_iter_inline_math_spans(text))
+    math_spans = list(_iter_inline_math_spans(text))
+    spans = list(math_spans)
+    for span in _iter_phonetic_spans(text):
+        if not _overlaps_any(span, math_spans):
+            spans.append(span)
+    spans.sort(key=lambda s: s[0])
+    return spans
 
 
 def _segment_unprotected(
