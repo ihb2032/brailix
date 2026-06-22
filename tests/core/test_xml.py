@@ -12,6 +12,7 @@ from brailix.core._xml import (
     strip_namespace,
     strip_whitespace_text,
     strip_xml_invalid_chars,
+    tree_depth_exceeds,
 )
 
 
@@ -92,6 +93,24 @@ class TestStripNamespace:
         assert root.tag == "math"
         assert root[0].tag == "mi"
 
+    def test_deeply_nested_does_not_overflow(self) -> None:
+        # Iterative, not recursive: a tree far deeper than Python's recursion
+        # limit must strip without RecursionError (an untrusted MathML / .blx
+        # payload reaches here via the IR-deserialization boundary).
+        depth = 5000
+        root = ET.Element("{urn:x}math")
+        cur = root
+        for _ in range(depth):
+            cur = ET.SubElement(cur, "{urn:x}mrow")
+        strip_namespace(root)  # must not raise
+        assert root.tag == "math"
+        node, seen = root, 0
+        while len(node):
+            node = node[0]
+            assert node.tag == "mrow"
+            seen += 1
+        assert seen == depth
+
 
 class TestStripWhitespaceText:
     def test_nulls_pure_whitespace_text_and_tail(self) -> None:
@@ -105,6 +124,55 @@ class TestStripWhitespaceText:
         root = ET.fromstring("<r> keep <a>x</a></r>")
         strip_whitespace_text(root)
         assert root.text == " keep "  # not pure whitespace → kept
+
+    def test_deeply_nested_does_not_overflow(self) -> None:
+        depth = 5000
+        root = ET.Element("r")
+        cur = root
+        for _ in range(depth):
+            cur = ET.SubElement(cur, "a")
+            cur.text = "   "  # pure whitespace at every level
+        strip_whitespace_text(root)  # must not raise
+        node = root
+        while len(node):
+            node = node[0]
+        assert node.text is None  # deepest whitespace text nulled
+
+
+class TestTreeDepthExceeds:
+    @staticmethod
+    def _chain(depth: int) -> ET.Element:
+        # A linear tree whose nesting depth is exactly `depth` (root = 1).
+        root = ET.Element("math")
+        cur = root
+        for _ in range(depth - 1):
+            cur = ET.SubElement(cur, "mrow")
+        return root
+
+    def test_shallow_is_within_limit(self) -> None:
+        assert tree_depth_exceeds(self._chain(10), 150) is False
+
+    def test_exactly_at_limit_is_not_exceeded(self) -> None:
+        assert tree_depth_exceeds(self._chain(150), 150) is False
+
+    def test_one_past_limit_is_exceeded(self) -> None:
+        assert tree_depth_exceeds(self._chain(151), 150) is True
+
+    def test_single_element_is_depth_one(self) -> None:
+        assert tree_depth_exceeds(ET.Element("math"), 1) is False
+
+    def test_probe_is_itself_depth_safe(self) -> None:
+        # A 5000-deep tree against a small limit short-circuits to True
+        # without the probe itself recursing / overflowing.
+        assert tree_depth_exceeds(self._chain(5000), 150) is True
+
+    def test_width_is_not_depth(self) -> None:
+        # A wide-but-shallow tree (root + many children) is depth 2.
+        root = ET.Element("math")
+        for _ in range(1000):
+            ET.SubElement(root, "mn")
+        assert tree_depth_exceeds(root, 2) is False
+        assert tree_depth_exceeds(root, 1) is True
 
 
 class TestLocalName:

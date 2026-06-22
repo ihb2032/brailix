@@ -80,31 +80,67 @@ def strip_xml_invalid_chars(text: str) -> str:
 
 
 def strip_namespace(elem: ET.Element) -> None:
-    """Recursively drop any ``{namespace}local`` Clark-notation prefix
-    from every element tag, leaving the bare local name.
+    """Drop any ``{namespace}local`` Clark-notation prefix from every
+    element tag, leaving the bare local name.
+
+    Iterative (explicit stack) rather than recursive so an adversarially
+    deep tree — thousands of nested elements in an untrusted MathML /
+    MusicXML payload or a ``.blx`` round-trip — can't overflow Python's
+    recursion limit here: the IR-deserialization and MathML-normalizer
+    boundaries both rely on this strip being depth-safe.
 
     A normalized MathML / MusicXML tree only ever carries its own
     namespace, so the generic strip is equivalent to a prefix-specific
     one for valid input while also tidying any stray foreign-namespaced
     tag a vendor might have left behind.
     """
-    if elem.tag.startswith("{"):
-        close = elem.tag.find("}")
-        if close != -1:
-            elem.tag = elem.tag[close + 1:]
-    for child in list(elem):
-        strip_namespace(child)
+    stack: list[ET.Element] = [elem]
+    while stack:
+        node = stack.pop()
+        if node.tag.startswith("{"):
+            close = node.tag.find("}")
+            if close != -1:
+                node.tag = node.tag[close + 1:]
+        stack.extend(node)
 
 
 def strip_whitespace_text(elem: ET.Element) -> None:
-    """Recursively null out pure-whitespace ``text`` / ``tail`` strings,
-    which otherwise confuse children iteration in the IR builders."""
-    if elem.text is not None and not elem.text.strip():
-        elem.text = None
-    for child in list(elem):
-        if child.tail is not None and not child.tail.strip():
-            child.tail = None
-        strip_whitespace_text(child)
+    """Null out pure-whitespace ``text`` / ``tail`` strings, which
+    otherwise confuse children iteration in the IR builders.
+
+    Iterative (explicit stack) for the same depth-safety as
+    :func:`strip_namespace`.
+    """
+    stack: list[ET.Element] = [elem]
+    while stack:
+        node = stack.pop()
+        if node.text is not None and not node.text.strip():
+            node.text = None
+        for child in node:
+            if child.tail is not None and not child.tail.strip():
+                child.tail = None
+            stack.append(child)
+
+
+def tree_depth_exceeds(elem: ET.Element, limit: int) -> bool:
+    """Whether ``elem``'s element-nesting depth exceeds ``limit`` levels
+    (``elem`` itself is depth 1).
+
+    Iterative (explicit stack carrying each node's depth) and short-circuits
+    as soon as a node past ``limit`` is reached, so the probe is itself
+    depth-safe. Used to guard the recursive-descent boundaries that aren't
+    easily made iterative (the math backend's tag dispatch, the MathML
+    normalizer's passes): a tree past the cap degrades to a soft failure
+    instead of overflowing the stack and crashing the pipeline.
+    """
+    stack: list[tuple[ET.Element, int]] = [(elem, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > limit:
+            return True
+        for child in node:
+            stack.append((child, depth + 1))
+    return False
 
 
 def local_name(tag: str) -> str:
