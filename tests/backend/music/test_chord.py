@@ -282,3 +282,74 @@ class TestChordRootUnreadablePitch:
             and "without a prior root note" in w.message
             for w in ctx.warnings.warnings
         ), "chord member with an unreadable root must orphan-warn"
+
+
+# ---------------------------------------------------------------------------
+# A <direction> between a chord root and its members must not split the chord
+# ---------------------------------------------------------------------------
+
+
+class TestChordNotSplitByInterposedDirection:
+    """The chord interval must directly follow the written note. A
+    ``<direction>`` (dynamic / wedge) wedged between the root and its
+    ``<chord/>`` member used to detach the interval on the single-voice
+    path (the in-accord path already buffered such inserts). Regression
+    guard: the interval stays adjacent to the note; the direction's cells
+    land *after* the whole chord."""
+
+    def test_dynamic_between_root_and_member_keeps_chord_intact(
+        self, profile, ctx,
+    ):
+        notes = [
+            "<note>"
+            "<pitch><step>C</step><octave>4</octave></pitch>"
+            "<duration>4</duration><type>quarter</type></note>",
+            # A dynamic wedged between the root and the chord member.
+            "<direction><direction-type>"
+            "<dynamics><f/></dynamics>"
+            "</direction-type></direction>",
+            "<note><chord/>"
+            "<pitch><step>E</step><octave>4</octave></pitch>"
+            "<duration>4</duration><type>quarter</type></note>",
+        ]
+        tree = _chord_block(notes)
+        cells = emit_tree(tree, ctx, profile)
+        roles = _roles(cells)
+        # Chord kept whole (note + interval), dynamic after it — not split.
+        assert roles == [
+            "music_octave",
+            "music_note",
+            "music_interval",
+            "music_dynamic",
+            "music_dynamic",
+        ]
+        # The defining regression assertion: interval before any dynamic.
+        assert roles.index("music_interval") < roles.index("music_dynamic")
+        assert ctx.warnings.warnings == []
+
+    def test_direction_after_complete_chord_unchanged(self, profile, ctx):
+        # A direction that follows a *complete* chord stays after it
+        # (this path was always correct; pin it so the fix doesn't regress
+        # the ordering of a trailing direction).
+        notes = [
+            "<note>"
+            "<pitch><step>C</step><octave>4</octave></pitch>"
+            "<duration>4</duration><type>quarter</type></note>",
+            "<note><chord/>"
+            "<pitch><step>E</step><octave>4</octave></pitch>"
+            "<duration>4</duration><type>quarter</type></note>",
+            "<direction><direction-type>"
+            "<dynamics><f/></dynamics>"
+            "</direction-type></direction>",
+        ]
+        tree = _chord_block(notes)
+        cells = emit_tree(tree, ctx, profile)
+        roles = _roles(cells)
+        assert roles == [
+            "music_octave",
+            "music_note",
+            "music_interval",
+            "music_dynamic",
+            "music_dynamic",
+        ]
+        assert ctx.warnings.warnings == []
