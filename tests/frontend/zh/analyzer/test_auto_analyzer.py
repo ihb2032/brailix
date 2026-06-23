@@ -99,3 +99,28 @@ def test_auto_falls_through_model_not_installed_candidate():
         assert [t.surface for t in tokens] == ["我"]  # degraded to char
     finally:
         analyzer_registry.unregister("fake_mni")
+
+
+def test_hanlp_load_failure_surfaces_as_model_not_installed(monkeypatch, tmp_path):
+    # In the standalone (non-managed) path hanlp.load auto-downloads the
+    # model; a network / IO failure there must surface as
+    # ModelNotInstalledError — which the ``auto`` chain catches (see
+    # test_auto_falls_through_model_not_installed_candidate) — rather than the
+    # raw OSError that would crash the whole compile.
+    import types
+    from unittest.mock import MagicMock
+
+    from brailix.core.errors import ModelNotInstalledError
+    from brailix.frontend.zh.analyzer.adapters import hanlp as hanlp_adapter
+
+    fake = types.ModuleType("hanlp")
+    fake.pretrained = MagicMock()  # any hanlp.pretrained.mtl.* attribute
+    fake.load = MagicMock(side_effect=OSError("network unreachable"))
+    monkeypatch.setitem(sys.modules, "hanlp", fake)
+    monkeypatch.setattr(hanlp_adapter, "get_model_dir", lambda _name: tmp_path)
+    monkeypatch.setattr(hanlp_adapter, "is_managed_download", lambda: False)
+
+    with pytest.raises(ModelNotInstalledError) as ei:
+        hanlp_adapter._load()
+    # The underlying download failure is chained, not swallowed.
+    assert isinstance(ei.value.__cause__, OSError)

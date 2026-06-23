@@ -23,6 +23,17 @@ class TestApplyUserDict:
         _apply_user_dict(tokens, {"重庆": "chong2 qing4"})
         assert tokens[0].pinyin == "chong2 qing4"
 
+    def test_override_clears_stale_confidence(self) -> None:
+        # The校对员 pinned this reading, so it's certain — a stale low
+        # confidence from the resolver must not survive onto it (and so
+        # never serialize as a misleading low value downstream).
+        tokens = [
+            ChineseToken(surface="重庆", pinyin="zhong4 qing4", confidence=0.2)
+        ]
+        _apply_user_dict(tokens, {"重庆": "chong2 qing4"})
+        assert tokens[0].pinyin == "chong2 qing4"
+        assert tokens[0].confidence is None
+
     def test_fills_when_reading_unset(self) -> None:
         tokens = [ChineseToken(surface="重庆")]
         _apply_user_dict(tokens, {"重庆": "chong2 qing4"})

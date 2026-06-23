@@ -487,6 +487,30 @@ class TestPagination:
         out = LayoutRenderer().render(doc)
         assert "\f" not in out
 
+    def test_page_does_not_open_with_blank_separator(self):
+        # Two paragraphs, a heading, a paragraph: the heading's blank_before
+        # / blank_after framing lands at page tops (page_height=2). A page
+        # must not open with a blank braille line.
+        doc = BrailleDocument(blocks=[
+            BrailleBlock(cells=_word(3)),
+            BrailleBlock(cells=_word(3)),
+            BrailleBlock(block_type="heading", cells=_word(3)),
+            BrailleBlock(cells=_word(3)),
+        ])
+        out = LayoutRenderer(options=LayoutOptions(
+            line_width=40, paragraph_indent=0, page_height=2,
+        )).render(doc)
+        pages = out.split("\f")
+        assert len(pages) >= 3
+        blank = dots_to_char(())
+        for i, page in enumerate(pages):
+            if i == 0 or page == "":
+                continue
+            first_line = page.split("\n")[0]
+            assert first_line.strip(" " + blank) != "", (
+                f"page {i} opens with a blank line: {page!r}"
+            )
+
 
 class TestBrfFormat:
     def test_brf_returns_bytes_with_crlf(self):
@@ -549,6 +573,23 @@ class TestWrapEdgeCases:
             BrailleBlock(block_type="heading", cells=[]),
         ])
         out = LayoutRenderer().render(doc)  # defaults frame headings
+        assert out == ""
+
+    def test_degenerate_verbatim_block_emits_no_stray_blank(self):
+        # A verbatim block whose cells are only hang_open / hang_close
+        # sentinels (no content, no line_break) used to leak one empty row;
+        # the all-empty guard now suppresses it, matching the text-flow /
+        # score paths.
+        cells = [
+            BrailleCell(dots=(), role="hang_open"),
+            BrailleCell(dots=(), role="hang_close"),
+        ]
+        doc = BrailleDocument(blocks=[
+            BrailleBlock(block_type="code_block", cells=cells),
+        ])
+        out = LayoutRenderer(
+            options=LayoutOptions(paragraph_indent=0)
+        ).render(doc)
         assert out == ""
 
     def test_degenerate_score_block_emits_no_stray_blanks(self):

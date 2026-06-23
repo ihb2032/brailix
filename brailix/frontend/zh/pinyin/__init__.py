@@ -105,7 +105,11 @@ def _apply_user_dict(
             continue
         reading = user_dict.get(tok.surface)
         if reading and reading != tok.pinyin:
-            tokens[i] = replace(tok, pinyin=reading)
+            # The校对员 pinned this reading in their personal dict, so it's
+            # certain — clear the resolver's stale confidence so a low value
+            # doesn't serialize onto a now-definite reading (matches the
+            # withdrawn LOW_CONFIDENCE_PINYIN warning's semantics).
+            tokens[i] = replace(tok, pinyin=reading, confidence=None)
 
 
 __all__ = ("annotate", "list_resolvers")

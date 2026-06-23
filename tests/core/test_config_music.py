@@ -11,9 +11,13 @@ focuses on the load + lookup path, not on the cell values per se.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from brailix.core.config import load_profile
+from brailix.core.config.loader.music import _load_one_music_file
+from brailix.core.errors import ConfigurationError
 
 
 @pytest.fixture(scope="module")
@@ -197,3 +201,58 @@ class TestTongyongMusicParity:
             assert cn_ncb.music_topic(topic) == cn_current.music_topic(topic), (
                 f"music topic diverges between profiles: {topic!r}"
             )
+
+
+class TestMusicLoaderFailsLoud:
+    """A typo in a music resource must error at load, not silently drop the
+    entity (mirrors the zh punctuation table's loud-load contract — a
+    dropped note / octave / dynamic would only surface as a missing
+    translation much later)."""
+
+    def _write(self, tmp_path, payload):
+        p = tmp_path / "notes.json"
+        p.write_text(json.dumps(payload), encoding="utf-8")
+        return p
+
+    _POOL = {"c_13456": (1, 3, 4, 5, 6)}
+
+    def test_entry_with_misspelled_cells_key_raises(self, tmp_path):
+        # "cell" instead of "cells" — used to vanish the whole entry.
+        p = self._write(
+            tmp_path,
+            {"schema": "music/v1", "notes": {"whole_C": {"cell": "c_13456"}}},
+        )
+        with pytest.raises(ConfigurationError, match="whole_C"):
+            _load_one_music_file(p, self._POOL)
+
+    def test_non_object_entry_raises(self, tmp_path):
+        # Entry is a bare list, not an object with a cells list.
+        p = self._write(tmp_path, {"notes": {"whole_C": ["c_13456"]}})
+        with pytest.raises(ConfigurationError, match="whole_C"):
+            _load_one_music_file(p, self._POOL)
+
+    def test_duplicate_body_topics_raise(self, tmp_path):
+        # Both "notes" and a typo'd "note" — order used to pick one, drop one.
+        p = self._write(
+            tmp_path,
+            {
+                "notes": {"whole_C": {"cells": ["c_13456"]}},
+                "note": {"whole_C": {"cells": ["c_13456"]}},
+            },
+        )
+        with pytest.raises(ConfigurationError, match="multiple body topics"):
+            _load_one_music_file(p, self._POOL)
+
+    def test_valid_file_with_spec_section_still_loads(self, tmp_path):
+        # A genuine _-prefixed spec section is skipped, the cells topic loads.
+        p = self._write(
+            tmp_path,
+            {
+                "schema": "music/v1",
+                "_kind_spec": {"major": []},
+                "notes": {"whole_C": {"cells": ["c_13456"]}},
+            },
+        )
+        assert _load_one_music_file(p, self._POOL) == {
+            "whole_C": ((1, 3, 4, 5, 6),)
+        }

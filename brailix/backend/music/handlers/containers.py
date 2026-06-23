@@ -24,12 +24,22 @@ def _emit_note_sequence(
 ) -> None:
     """Dispatch a measure / voice child sequence, batching chord runs.
 
-    A chord is a ``<note>`` without ``<chord/>`` immediately followed by
-    one or more ``<note><chord/></note>`` siblings. Those are handed to
+    A chord is a ``<note>`` without ``<chord/>`` followed by one or more
+    ``<note><chord/></note>`` siblings. Those are handed to
     :func:`_emit_chord_run` as a group so it can pick the written note by
     clef (BANA Par. 9.2); every other child (single notes, rests,
     barlines, directions, attributes, ...) dispatches individually,
     unchanged.
+
+    A non-note element (a ``<direction>`` dynamic / wedge, a mid-measure
+    ``<attributes>``, ...) may appear *between* the root and its
+    ``<chord/>`` members; such elements are buffered and re-emitted right
+    after the chord so they can't split it. The chord interval must
+    directly follow the written note, so a direction wedged in between
+    would otherwise detach the interval from its root. This mirrors the
+    inter-note buffering :func:`_emit_multi_voice` does with
+    ``pending_inserts``, so both the single-voice and in-accord paths keep
+    chords intact.
     """
     i = 0
     n = len(children)
@@ -40,15 +50,22 @@ def _emit_note_sequence(
             and child.find("rest") is None
             and child.find("chord") is None
         ):
+            members = [child]
+            inserts: list[ET.Element] = []
             j = i + 1
-            while (
-                j < n
-                and children[j].tag == "note"
-                and children[j].find("chord") is not None
-            ):
+            while j < n:
+                nxt = children[j]
+                if nxt.tag == "note" and nxt.find("chord") is not None:
+                    members.append(nxt)
+                elif nxt.tag == "note":
+                    break  # a fresh root note (or rest) ends the chord run
+                else:
+                    inserts.append(nxt)  # buffer, re-emit after the chord
                 j += 1
-            if j - i > 1:  # ≥1 chord note followed the root
-                _emit_chord_run(cells, mctx, children[i:j])
+            if len(members) > 1:  # ≥1 chord note followed the root
+                _emit_chord_run(cells, mctx, members)
+                for el in inserts:
+                    _emit_element(cells, mctx, el)
                 i = j
                 continue
         _emit_element(cells, mctx, child)

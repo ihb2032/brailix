@@ -134,7 +134,22 @@ def _load() -> HanLPChineseAnalyzer:
     if is_managed_download():
         _ensure_model_installed(hanlp_home)
 
-    pipeline = hanlp.load(hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH)
+    # Standalone (non-managed) path: HanLP auto-downloads the model here on
+    # first use. A download / IO failure (no network, a truncated or corrupt
+    # archive, a read-only models dir) raises deep inside hanlp.load as
+    # OSError / RuntimeError / zipfile.BadZipFile — none of which the ``auto``
+    # chain catches, so the whole translation would crash instead of degrading
+    # to the next tokenizer. Re-raise as ModelNotInstalledError (the model
+    # genuinely isn't usable) so ``auto`` falls back to jieba → char, exactly
+    # as the managed-download pre-check above already does.
+    try:
+        pipeline = hanlp.load(
+            hanlp.pretrained.mtl.CLOSE_TOK_POS_NER_SRL_DEP_SDP_CON_ELECTRA_SMALL_ZH
+        )
+    except Exception as exc:  # noqa: BLE001 — any load failure ⇒ candidate unavailable
+        raise ModelNotInstalledError(
+            model_id=_MODEL_ID, install_dir=hanlp_home / _MTL_DIR
+        ) from exc
     return HanLPChineseAnalyzer(pipeline=pipeline)
 
 

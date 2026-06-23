@@ -302,6 +302,12 @@ class LayoutRenderer:
                         row.append(c)
                 if row or not out:
                     out.append(row)
+            if all(not line for line in out):
+                # Degenerate block (e.g. cells were all hang sentinels, no
+                # content, no line_break): emit nothing, matching the
+                # text-flow / music all-empty guard, instead of leaking a
+                # stray blank line.
+                return []
             return out
 
         if block_type in ("score", "music_block"):
@@ -752,6 +758,11 @@ class LayoutRenderer:
             range(0, len(encoded), opts.page_height)
         ):
             page_lines = list(encoded[start : start + opts.page_height])
+            if page_idx > 0:
+                # A blank block separator at a page boundary must not open
+                # the page with an empty line (the first page may legitimately
+                # start with content of its own).
+                _trim_leading_blank_lines(page_lines, b" ")
             if opts.show_page_numbers:
                 num_line = _page_number_line(
                     _page_number_brf(page_idx + 1),
@@ -783,6 +794,11 @@ class LayoutRenderer:
             range(0, len(encoded), opts.page_height)
         ):
             page_lines = list(encoded[start : start + opts.page_height])
+            if page_idx > 0:
+                # As in _encode_brf: don't open a page with a blank
+                # separator line. Strip both a space and the U+2800 blank
+                # braille pattern an all-blank cell line encodes to.
+                _trim_leading_blank_lines(page_lines, " " + dots_to_char(()))
             if opts.show_page_numbers:
                 num_line = _page_number_line(
                     _page_number_chars(page_idx + 1),
@@ -797,6 +813,24 @@ class LayoutRenderer:
                 )
             pages.append("\n".join(page_lines))
         return "\f".join(pages)
+
+
+def _trim_leading_blank_lines[LineT: (str, bytes)](
+    page_lines: list[LineT], blank: LineT
+) -> None:
+    """Drop leading all-blank lines from a page, in place.
+
+    A blank block separator (a heading's blank_before / inter-block
+    spacing) that happens to land at the top of a new page would otherwise
+    open that page with an empty braille line. BANA / Current Chinese
+    Braille paginated output must not start a page blank — for a
+    point-display / embosser user it reads as a spurious empty line at
+    every affected page top. ``blank`` is the set of "empty" characters to
+    strip (a space, plus the U+2800 blank-braille pattern for the Unicode
+    encoding); an empty line strips to empty too.
+    """
+    while page_lines and not page_lines[0].strip(blank):
+        page_lines.pop(0)
 
 
 def _page_number_line[LineT: (str, bytes)](
