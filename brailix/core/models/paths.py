@@ -3,8 +3,6 @@
 Uses the same frozen-vs-dev dispatch a packaged front-end applies,
 but lives in the ``brailix`` package so adapter code can resolve
 model directories on its own without importing any front-end layer.
-The two helpers below are intentionally tiny — if a third shared
-portable-aware utility shows up later, consolidate then.
 
 Resolution rules:
 
@@ -15,6 +13,13 @@ Resolution rules:
   developers running the application from the repo root;
   ``.gitignore`` already excludes ``models/`` so test weights don't
   get committed.
+* Fallback when the chosen root is **not writable**: a per-user data
+  directory (``%LOCALAPPDATA%/brailix/models`` on Windows, an
+  XDG / home path elsewhere).  This is the case when brailix is
+  imported into *another* application's frozen interpreter — e.g. the
+  NVDA add-on, where ``sys.executable`` is ``nvda.exe`` under
+  ``C:/Program Files`` — or installed read-only.  Without it,
+  resolving a model dir would raise ``PermissionError`` mid-compile.
 
 Both :func:`get_models_root` and :func:`get_model_dir` create the
 directory on first call — adapters should be able to assume the
@@ -27,6 +32,7 @@ right error condition (the failure modes that matter are missing
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -48,15 +54,52 @@ def _portable_root() -> Path:
     return Path.cwd()
 
 
-def get_models_root() -> Path:
-    """Return the ``models/`` directory at the portable bundle root.
+def _user_data_root() -> Path:
+    """Per-user, writable base directory for brailix assets.
 
-    Created on first access.  Safe to call from any thread / process —
-    :meth:`Path.mkdir` with ``exist_ok=True`` is idempotent.
+    Used as the fallback when the portable root isn't writable. Honors
+    ``LOCALAPPDATA`` / ``APPDATA`` (Windows) then ``XDG_DATA_HOME``,
+    finally ``~/.local/share``.
     """
-    root = _portable_root() / _MODELS_DIRNAME
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    win = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    if win:
+        return Path(win) / "brailix"
+    xdg = os.environ.get("XDG_DATA_HOME")
+    if xdg:
+        return Path(xdg) / "brailix"
+    return Path.home() / ".local" / "share" / "brailix"
+
+
+def _make_writable_dir(path: Path) -> bool:
+    """Create ``path`` (with parents) and report whether it's usable.
+
+    Returns ``False`` instead of raising when the directory can't be
+    created (read-only parent, a file in the way) so the caller can fall
+    back to another location.
+    """
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    return os.access(path, os.W_OK)
+
+
+def get_models_root() -> Path:
+    """Return a writable ``models/`` directory, creating it on first call.
+
+    Prefers the portable bundle root (next to the executable when frozen,
+    else the cwd) so a copied portable bundle carries its weights. Falls
+    back to a per-user data directory when that root is read-only.
+
+    Safe to call from any thread / process — :meth:`Path.mkdir` with
+    ``exist_ok=True`` is idempotent.
+    """
+    portable = _portable_root() / _MODELS_DIRNAME
+    if _make_writable_dir(portable):
+        return portable
+    fallback = _user_data_root() / _MODELS_DIRNAME
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
 
 
 def get_model_dir(name: str) -> Path:
