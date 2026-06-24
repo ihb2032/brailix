@@ -64,6 +64,24 @@ class TestGetModelsRoot:
         root = get_models_root()
         assert root.is_dir()
 
+    def test_falls_back_to_user_data_when_portable_unwritable(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # brailix imported into another app's read-only install (e.g. the
+        # NVDA add-on, where sys.executable is nvda.exe under Program Files):
+        # the portable root can't be created, so the models dir must fall
+        # back to a per-user data directory rather than raise PermissionError
+        # mid-compile.
+        import brailix.core.models.paths as paths_mod
+
+        blocker = tmp_path / "blocker"
+        blocker.write_bytes(b"")  # a file in the way blocks mkdir of any child
+        monkeypatch.setattr(paths_mod, "_portable_root", lambda: blocker / "sub")
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+        root = get_models_root()
+        assert root == tmp_path / "appdata" / "brailix" / "models"
+        assert root.is_dir()
+
 
 class TestGetModelDir:
     def test_returns_named_subdir(self, tmp_path: Path, monkeypatch) -> None:
